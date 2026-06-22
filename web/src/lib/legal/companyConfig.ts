@@ -4,11 +4,11 @@
  */
 
 export const COMPANY = {
-  legalName: '[Your Company Legal Name]',
-  shortName: '[Company Name]',
+  legalName: 'CFC ICI Kerala',
+  shortName: 'CFC ICI',
   platformName: 'Vigilance Management System',
   platformAbbrev: 'VMS',
-  operationalRegion: '[Operational Region]',
+  operationalRegion: 'Kerala, India',
   businessContext:
     'internal vigilance, inspection, compliance-support, and operational monitoring for authorised personnel',
   website: 'https://example.com',

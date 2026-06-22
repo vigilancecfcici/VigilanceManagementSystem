@@ -471,7 +471,7 @@ export default function CeoMapPage() {
 
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-black/40 shadow-[0_0_40px_rgba(6,182,212,0.2)]">
+      <div className="ceo-map-shell relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-black/40 shadow-[0_0_40px_rgba(6,182,212,0.2)]">
         {(branchesLoading || inspectionsLoading) && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">
             <div className="text-white text-sm">Loading map data...</div>
@@ -553,10 +553,11 @@ export default function CeoMapPage() {
         </div>
         <div
           ref={mapRef}
+          className="ceo-map-canvas"
           style={{
             width: '100%',
-            height: 'calc(100vh - 280px)',
-            minHeight: 520,
+            height: 'min(72vh, 720px)',
+            minHeight: 480,
             backgroundColor: '#0A0A0F',
           }}
         />

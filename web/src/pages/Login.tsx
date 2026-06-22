@@ -65,7 +65,6 @@ export default function Login() {
           />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{COMPANY.platformAbbrev}</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{COMPANY.platformName}</p>
-          <p className="text-gray-400 dark:text-gray-500 text-xs mt-2">{COMPANY.legalName}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

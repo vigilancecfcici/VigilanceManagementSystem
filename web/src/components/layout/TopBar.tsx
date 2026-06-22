@@ -29,7 +29,7 @@ export function TopBar({
 
   return (
     <div
-      className="vms-topbar fixed top-0 right-0 z-30 flex h-20 items-center justify-between border-b px-4 transition-[left] duration-300 sm:px-6"
+      className="vms-topbar fixed top-0 right-0 z-[1100] flex h-20 items-center justify-between border-b px-4 transition-[left] duration-300 sm:px-6"
       style={{
         left: window.innerWidth < 768 ? '0' : sidebarWidth,
       }}

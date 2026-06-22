@@ -728,6 +728,17 @@ body {
       0 8px 24px rgba(8, 10, 18, 0.12);
   }
 
+  /* Keep Leaflet panes inside the map card so they do not paint over the fixed top bar. */
+  .ceo-map-shell {
+    position: relative;
+    isolation: isolate;
+    z-index: 0;
+  }
+
+  .ceo-map-shell .leaflet-container {
+    z-index: 0;
+  }
+
   @supports (backdrop-filter: blur(14px)) {
     .vms-topbar {
       backdrop-filter: blur(14px);
