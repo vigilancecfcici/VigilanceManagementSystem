@@ -76,6 +76,77 @@ function buildRiskPayload(checklistItemId: string, fields: RiskFieldsValue) {
   };
 }
 
+async function applyGlobalItemOrders(
+  sectionsInOrder: string[],
+  items: ChecklistItem[],
+): Promise<void> {
+  let nextOrder = 1;
+  for (const section of sectionsInOrder) {
+    const sectionItems = items
+      .filter((item) => item.section === section)
+      .sort((a, b) => a.item_order - b.item_order);
+    for (const item of sectionItems) {
+      if (item.item_order !== nextOrder) {
+        const { error } = await supabase
+          .from('checklist_templates')
+          .update({ item_order: nextOrder })
+          .eq('id', item.id);
+        if (error) throw error;
+      }
+      nextOrder += 1;
+    }
+  }
+}
+
+async function nextItemOrderForSection(
+  section: string,
+  items: ChecklistItem[],
+  sectionsInOrder: string[],
+): Promise<number> {
+  const sorted = [...items].sort((a, b) => a.item_order - b.item_order);
+  const sectionItems = sorted.filter((item) => item.section === section);
+  if (sectionItems.length > 0) {
+    return sectionItems[sectionItems.length - 1].item_order + 1;
+  }
+
+  const sectionIndex = sectionsInOrder.indexOf(section);
+  if (sectionIndex > 0) {
+    for (let i = sectionIndex - 1; i >= 0; i -= 1) {
+      const prevSectionItems = sorted.filter((item) => item.section === sectionsInOrder[i]);
+      if (prevSectionItems.length > 0) {
+        return prevSectionItems[prevSectionItems.length - 1].item_order + 1;
+      }
+    }
+  }
+
+  return (sorted[sorted.length - 1]?.item_order ?? 0) + 1;
+}
+
+async function insertItemAtOrder(
+  insertOrder: number,
+  items: ChecklistItem[],
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const toBump = items
+    .filter((item) => item.item_order >= insertOrder)
+    .sort((a, b) => b.item_order - a.item_order);
+  for (const item of toBump) {
+    const { error } = await supabase
+      .from('checklist_templates')
+      .update({ item_order: item.item_order + 1 })
+      .eq('id', item.id);
+    if (error) throw error;
+  }
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from('checklist_templates')
+    .insert({ ...payload, item_order: insertOrder })
+    .select('id')
+    .single();
+  if (insertErr || !inserted) throw insertErr ?? new Error('Insert failed');
+  return inserted.id as string;
+}
+
 function SortableSectionHeader({
   id,
   section,
@@ -130,6 +201,7 @@ function ChecklistItemModal({
   mode,
   item,
   sections,
+  items,
   storeTypeId,
   onClose,
   onSaved,
@@ -137,6 +209,7 @@ function ChecklistItemModal({
   mode: 'add' | 'edit';
   item?: ChecklistItem;
   sections: string[];
+  items: ChecklistItem[];
   storeTypeId: string | undefined;
   onClose: () => void;
   onSaved: () => void;
@@ -195,31 +268,18 @@ function ChecklistItemModal({
           .upsert(buildRiskPayload(item.id, risk), { onConflict: 'checklist_item_id' });
         if (rcErr) throw rcErr;
       } else {
-        const { data: existing } = await supabase
-          .from('checklist_templates')
-          .select('item_order')
-          .eq('section', finalSection)
-          .order('item_order', { ascending: false })
-          .limit(1);
-        const nextOrder = (existing?.[0]?.item_order ?? 0) + 1;
-
-        const { data: inserted, error: insertErr } = await supabase
-          .from('checklist_templates')
-          .insert({
-            section: finalSection,
-            item_text: itemText.trim(),
-            item_order: nextOrder,
-            branch_type_id: branchTypeId,
-            is_active: true,
-            options: savedOptions,
-          })
-          .select('id')
-          .single();
-        if (insertErr || !inserted) throw insertErr ?? new Error('Insert failed');
+        const insertOrder = await nextItemOrderForSection(finalSection, items, sections);
+        const insertedId = await insertItemAtOrder(insertOrder, items, {
+          section: finalSection,
+          item_text: itemText.trim(),
+          branch_type_id: branchTypeId,
+          is_active: true,
+          options: savedOptions,
+        });
 
         const { error: rcErr } = await supabase
           .from('risk_classifications')
-          .upsert(buildRiskPayload(inserted.id, risk), { onConflict: 'checklist_item_id' });
+          .upsert(buildRiskPayload(insertedId, risk), { onConflict: 'checklist_item_id' });
         if (rcErr) throw rcErr;
       }
       onSaved();
@@ -497,24 +557,12 @@ export function ChecklistAdminTab() {
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(orderedSections, oldIndex, newIndex);
     setSectionOrder(next);
-
-    const baseOrder = 1000;
-    for (let si = 0; si < next.length; si++) {
-      const section = next[si];
-      const sectionItems = items
-        .filter((i) => i.section === section)
-        .sort((a, b) => a.item_order - b.item_order);
-      for (let ii = 0; ii < sectionItems.length; ii++) {
-        const newItemOrder = si * baseOrder + ii + 1;
-        if (sectionItems[ii].item_order !== newItemOrder) {
-          await supabase
-            .from('checklist_templates')
-            .update({ item_order: newItemOrder })
-            .eq('id', sectionItems[ii].id);
-        }
-      }
+    try {
+      await applyGlobalItemOrders(next, items);
+      void qc.invalidateQueries({ queryKey: ['admin-checklist'] });
+    } catch (err) {
+      console.error('[ChecklistAdminTab] section reorder failed', err);
     }
-    void qc.invalidateQueries({ queryKey: ['admin-checklist'] });
   };
 
   const toggleSection = (section: string) => {
@@ -556,9 +604,9 @@ export function ChecklistAdminTab() {
                 />
                 {!collapsed && (
                   <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {sectionItems.map((item) => (
+                    {sectionItems.map((item, index) => (
                       <li key={item.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                        <span className="text-gray-400 w-6 text-right">{item.item_order}</span>
+                        <span className="text-gray-400 w-6 text-right">{index + 1}</span>
                         <span className="flex-1">
                           {item.item_text}
                           {item.options && item.options.length > 0 && (
@@ -610,6 +658,7 @@ export function ChecklistAdminTab() {
         <ChecklistItemModal
           mode="add"
           sections={orderedSections}
+          items={items}
           storeTypeId={storeTypeId}
           onClose={() => setShowAdd(false)}
           onSaved={() => {
@@ -624,6 +673,7 @@ export function ChecklistAdminTab() {
           mode="edit"
           item={editingItem}
           sections={orderedSections}
+          items={items}
           storeTypeId={storeTypeId}
           onClose={() => setEditingItem(null)}
           onSaved={() => {
