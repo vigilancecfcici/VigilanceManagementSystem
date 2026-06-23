@@ -61,7 +61,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
   }
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+// IMPORTANT:
+// In production builds these values must be embedded at build time via EAS env vars.
+// If they're missing and we call createClient('', ''), supabase-js can throw during
+// module initialization, causing the app to crash immediately on launch.
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+const resolvedSupabaseUrl = supabaseUrl || 'https://example.supabase.co';
+const resolvedSupabaseAnonKey = supabaseAnonKey || 'example-anon-key';
+
+export const supabase = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
   auth: {
     storage: secureStore,
     autoRefreshToken: true,
