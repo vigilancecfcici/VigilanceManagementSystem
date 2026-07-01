@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -832,6 +832,8 @@ function BranchModal({
   const [customDistrict, setCustomDistrict] = useState('');
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastGeocodedAddressRef = useRef('');
   const districtOptions = useMemo(() => {
     const current = form.watch('region')?.trim();
     const extra = customDistrict.trim();
@@ -842,6 +844,24 @@ function BranchModal({
   }, [customDistrict, form]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+    };
+  }, []);
+
+  const scheduleAddressGeocode = (address: string) => {
+    const trimmed = address.trim();
+    if (trimmed.length < 15) return;
+    if (trimmed === lastGeocodedAddressRef.current) return;
+
+    if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+    geocodeTimerRef.current = setTimeout(() => {
+      lastGeocodedAddressRef.current = trimmed;
+      void handleAddressGeocode(trimmed);
+    }, 800);
+  };
 
   const handleAddressGeocode = async (address: string) => {
     const trimmed = address.trim();
@@ -965,16 +985,24 @@ function BranchModal({
                         placeholder="Paste full address from Google Maps…"
                         {...field}
                         value={field.value ?? ''}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          scheduleAddressGeocode(e.target.value);
+                        }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text').trim();
                           if (pasted.length >= 10) {
-                            window.setTimeout(() => void handleAddressGeocode(pasted), 0);
+                            window.setTimeout(() => {
+                              lastGeocodedAddressRef.current = pasted;
+                              void handleAddressGeocode(pasted);
+                            }, 0);
                           }
                         }}
                         onBlur={(e) => {
                           field.onBlur();
                           const value = e.target.value.trim();
-                          if (value.length >= 20 && !form.getValues('latitude')) {
+                          if (value.length >= 15 && value !== lastGeocodedAddressRef.current) {
+                            lastGeocodedAddressRef.current = value;
                             void handleAddressGeocode(value);
                           }
                         }}

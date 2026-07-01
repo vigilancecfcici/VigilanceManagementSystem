@@ -33,7 +33,32 @@ function parseCityFromAddress(address: string): string | null {
   return null;
 }
 
-/** Geocode a pasted address (e.g. from Google Maps) into city, district, and coordinates. */
+function isValidIndiaCoordinate(lat: number, lng: number): boolean {
+  return !Number.isNaN(lat) && !Number.isNaN(lng) && lat >= 6 && lat <= 37 && lng >= 68 && lng <= 97;
+}
+
+/** Extract lat/lng when pasted from Google Maps links or coordinate pairs. */
+export function parseEmbeddedCoordinates(text: string): { latitude: number; longitude: number } | null {
+  const patterns = [
+    /@(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/,
+    /[?&]q=(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/,
+    /(?:^|\s)(-?\d{1,2}\.\d{4,})\s*,\s*(-?\d{2,3}\.\d{4,})(?:\s|$)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const latitude = Number.parseFloat(match[1]);
+    const longitude = Number.parseFloat(match[2]);
+    if (isValidIndiaCoordinate(latitude, longitude)) {
+      return { latitude, longitude };
+    }
+  }
+
+  return null;
+}
+
+/** Geocode a typed or pasted address into city, district, and coordinates. */
 export async function geocodeAddress(address: string): Promise<GeocodeResult> {
   const trimmed = address.trim();
   if (trimmed.length < 10) {
@@ -42,6 +67,16 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult> {
 
   const districtFromText = matchDistrictFromText(trimmed);
   const cityFromText = parseCityFromAddress(trimmed);
+  const embedded = parseEmbeddedCoordinates(trimmed);
+
+  if (embedded) {
+    return {
+      city: cityFromText,
+      district: districtFromText,
+      latitude: embedded.latitude,
+      longitude: embedded.longitude,
+    };
+  }
 
   try {
     const query = encodeURIComponent(`${trimmed}, Kerala, India`);
