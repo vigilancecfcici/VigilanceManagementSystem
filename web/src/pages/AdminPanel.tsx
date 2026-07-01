@@ -869,24 +869,21 @@ function BranchModal({
 
     setGeocoding(true);
     setGeocodeError(null);
+    form.setValue('latitude', undefined, { shouldDirty: true });
+    form.setValue('longitude', undefined, { shouldDirty: true });
     try {
       const result = await geocodeAddress(trimmed);
-      form.setValue('location', trimmed);
-      if (result.city) form.setValue('city', result.city);
-      if (result.district) form.setValue('region', result.district);
+      form.setValue('location', trimmed, { shouldDirty: true });
+      if (result.city) form.setValue('city', result.city, { shouldDirty: true });
+      if (result.district) form.setValue('region', result.district, { shouldDirty: true });
       if (result.latitude != null && !Number.isNaN(result.latitude)) {
-        form.setValue('latitude', result.latitude);
+        form.setValue('latitude', result.latitude, { shouldDirty: true });
       }
       if (result.longitude != null && !Number.isNaN(result.longitude)) {
-        form.setValue('longitude', result.longitude);
+        form.setValue('longitude', result.longitude, { shouldDirty: true });
       }
-      if (
-        !result.city &&
-        !result.district &&
-        result.latitude == null &&
-        result.longitude == null
-      ) {
-        setGeocodeError('Could not detect location. Fill city and coordinates manually.');
+      if (result.latitude == null || result.longitude == null) {
+        setGeocodeError('Could not detect coordinates for this address. Try pasting the full Google Maps address or pincode.');
       }
     } catch {
       setGeocodeError('Address lookup failed. Fill fields manually.');
@@ -991,12 +988,12 @@ function BranchModal({
                         }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text').trim();
-                          if (pasted.length >= 10) {
-                            window.setTimeout(() => {
-                              lastGeocodedAddressRef.current = pasted;
-                              void handleAddressGeocode(pasted);
-                            }, 0);
-                          }
+                          if (pasted.length < 10) return;
+                          if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+                          window.setTimeout(() => {
+                            lastGeocodedAddressRef.current = pasted;
+                            void handleAddressGeocode(pasted);
+                          }, 100);
                         }}
                         onBlur={(e) => {
                           field.onBlur();
