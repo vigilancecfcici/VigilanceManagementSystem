@@ -1,6 +1,3 @@
-import { KERALA_DISTRICT_NAMES } from './storeRegions';
-import { supabase } from './supabase';
-
 export interface GeocodeResult {
   city: string | null;
   district: string | null;
@@ -15,22 +12,24 @@ type GeocodeHit = {
   district: string | null;
 };
 
-const INDIAN_STATES = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
-  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
-  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
-  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh',
-  'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Puducherry',
+const KERALA_DISTRICTS = [
+  'Thiruvananthapuram', 'Kollam', 'Pathanamthitta', 'Alappuzha', 'Kottayam',
+  'Idukki', 'Ernakulam', 'Thrissur', 'Palakkad', 'Malappuram', 'Kozhikode',
+  'Wayanad', 'Kannur', 'Kasaragod',
 ];
 
-const NOMINATIM_HEADERS = {
-  Accept: 'application/json',
-  'User-Agent': 'VigilanceAdmin/1.0 (branch-setup)',
-};
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa',
+  'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala',
+  'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland',
+  'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu and Kashmir',
+  'Ladakh', 'Puducherry',
+];
 
 function matchDistrictFromText(text: string): string | null {
   const lower = text.toLowerCase();
-  for (const district of KERALA_DISTRICT_NAMES) {
+  for (const district of KERALA_DISTRICTS) {
     if (lower.includes(district.toLowerCase())) return district;
   }
   return null;
@@ -61,6 +60,53 @@ function withIndiaSuffix(query: string): string {
   return /\bindia\b/i.test(query) ? query : `${query}, India`;
 }
 
+function parseCityFromAddress(address: string): string | null {
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i]
+      .replace(/\b\d{6}\b/g, '')
+      .replace(/\bIndia\b/gi, '')
+      .trim();
+    if (!part) continue;
+    if (isIndianState(part)) continue;
+    if (KERALA_DISTRICTS.some((d) => d.toLowerCase() === part.toLowerCase())) continue;
+    if (/^\d+$/.test(part)) continue;
+    if (/^[A-Z0-9]{4,}\+[A-Z0-9]{2,3}$/i.test(part)) continue;
+    if (/^(road|rd|street|st|nh\d+)$/i.test(part)) continue;
+    return part;
+  }
+  return null;
+}
+
+function isValidIndiaCoordinate(lat: number, lng: number): boolean {
+  return !Number.isNaN(lat) && !Number.isNaN(lng) && lat >= 6 && lat <= 37 && lng >= 68 && lng <= 97;
+}
+
+function roundCoordinate(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+function parseEmbeddedCoordinates(text: string): { latitude: number; longitude: number } | null {
+  const patterns = [
+    /@(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/,
+    /[?&]q=(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/,
+    /(?:^|\s)(-?\d{1,2}\.\d{4,})\s*,\s*(-?\d{2,3}\.\d{4,})(?:\s|$)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const latitude = Number.parseFloat(match[1]);
+    const longitude = Number.parseFloat(match[2]);
+    if (isValidIndiaCoordinate(latitude, longitude)) {
+      return { latitude: roundCoordinate(latitude), longitude: roundCoordinate(longitude) };
+    }
+  }
+  return null;
+}
+
 function buildGeocodeQueries(address: string): string[] {
   const trimmed = address.trim();
   const withoutPlus = stripPlusCodes(trimmed);
@@ -84,38 +130,7 @@ function buildGeocodeQueries(address: string): string[] {
   return queries;
 }
 
-function parseCityFromAddress(address: string): string | null {
-  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
-  if (parts.length < 2) return null;
-
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const part = parts[i]
-      .replace(/\b\d{6}\b/g, '')
-      .replace(/\bIndia\b/gi, '')
-      .trim();
-    if (!part) continue;
-    if (isIndianState(part)) continue;
-    if (KERALA_DISTRICT_NAMES.some((d) => d.toLowerCase() === part.toLowerCase())) continue;
-    if (/^\d+$/.test(part)) continue;
-    if (/^[A-Z0-9]{4,}\+[A-Z0-9]{2,3}$/i.test(part)) continue;
-    if (/^(road|rd|street|st|nh\d+)$/i.test(part)) continue;
-    return part;
-  }
-  return null;
-}
-
-function isValidIndiaCoordinate(lat: number, lng: number): boolean {
-  return !Number.isNaN(lat) && !Number.isNaN(lng) && lat >= 6 && lat <= 37 && lng >= 68 && lng <= 97;
-}
-
-function roundCoordinate(value: number): number {
-  return Number(value.toFixed(6));
-}
-
-function pickCity(
-  props: Record<string, string | undefined>,
-  fallback: string | null,
-): string | null {
+function pickCity(props: Record<string, string | undefined>, fallback: string | null): string | null {
   const candidates = [props.city, props.town, props.village, props.locality, props.name];
   for (const value of candidates) {
     if (!value) continue;
@@ -126,35 +141,14 @@ function pickCity(
   return fallback;
 }
 
-/** Extract lat/lng when pasted from Google Maps links or coordinate pairs. */
-export function parseEmbeddedCoordinates(text: string): { latitude: number; longitude: number } | null {
-  const patterns = [
-    /@(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/,
-    /[?&]q=(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/,
-    /(?:^|\s)(-?\d{1,2}\.\d{4,})\s*,\s*(-?\d{2,3}\.\d{4,})(?:\s|$)/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) continue;
-    const latitude = Number.parseFloat(match[1]);
-    const longitude = Number.parseFloat(match[2]);
-    if (isValidIndiaCoordinate(latitude, longitude)) {
-      return { latitude: roundCoordinate(latitude), longitude: roundCoordinate(longitude) };
-    }
-  }
-
-  return null;
-}
-
 async function searchPhoton(query: string): Promise<GeocodeHit | null> {
   const res = await fetch(
     `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&lang=en`,
-    { headers: { Accept: 'application/json' } },
+    { headers: { Accept: 'application/json', 'User-Agent': 'VigilanceAdmin/1.0' } },
   );
   if (!res.ok) return null;
 
-  const data = (await res.json()) as {
+  const data = await res.json() as {
     features?: Array<{
       geometry?: { coordinates?: [number, number] };
       properties?: Record<string, string | undefined>;
@@ -185,11 +179,11 @@ async function searchPhoton(query: string): Promise<GeocodeHit | null> {
 async function searchNominatim(query: string): Promise<GeocodeHit | null> {
   const res = await fetch(
     `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=in&addressdetails=1`,
-    { headers: NOMINATIM_HEADERS },
+    { headers: { Accept: 'application/json', 'User-Agent': 'VigilanceAdmin/1.0 (branch-setup)' } },
   );
   if (!res.ok) return null;
 
-  const data = (await res.json()) as Array<{
+  const data = await res.json() as Array<{
     lat: string;
     lon: string;
     address?: Record<string, string>;
@@ -230,7 +224,7 @@ async function resolveGeocodeHit(address: string): Promise<GeocodeHit | null> {
   return null;
 }
 
-async function geocodeAddressLocal(address: string): Promise<GeocodeResult> {
+export async function geocodeAddressText(address: string): Promise<GeocodeResult> {
   const trimmed = address.trim();
   if (trimmed.length < 10) {
     return { city: null, district: null, latitude: null, longitude: null };
@@ -249,24 +243,8 @@ async function geocodeAddressLocal(address: string): Promise<GeocodeResult> {
     };
   }
 
-  try {
-    const hit = await resolveGeocodeHit(trimmed);
-    if (!hit) {
-      return {
-        city: cityFromText,
-        district: districtFromText,
-        latitude: null,
-        longitude: null,
-      };
-    }
-
-    return {
-      city: hit.city ?? cityFromText,
-      district: hit.district ?? districtFromText,
-      latitude: hit.latitude,
-      longitude: hit.longitude,
-    };
-  } catch {
+  const hit = await resolveGeocodeHit(trimmed);
+  if (!hit) {
     return {
       city: cityFromText,
       district: districtFromText,
@@ -274,28 +252,11 @@ async function geocodeAddressLocal(address: string): Promise<GeocodeResult> {
       longitude: null,
     };
   }
-}
 
-/** Geocode via Supabase edge function (production) with browser fallback (dev). */
-export async function geocodeAddress(address: string): Promise<GeocodeResult> {
-  const trimmed = address.trim();
-  if (trimmed.length < 10) {
-    return { city: null, district: null, latitude: null, longitude: null };
-  }
-
-  try {
-    const { data, error } = await supabase.functions.invoke('geocode-address', {
-      body: { address: trimmed },
-    });
-    if (!error && data && typeof data === 'object') {
-      const result = data as GeocodeResult;
-      if (result.latitude != null && result.longitude != null) {
-        return result;
-      }
-    }
-  } catch {
-    // Edge function may be unavailable in local dev — fall back below.
-  }
-
-  return geocodeAddressLocal(trimmed);
+  return {
+    city: hit.city ?? cityFromText,
+    district: hit.district ?? districtFromText,
+    latitude: hit.latitude,
+    longitude: hit.longitude,
+  };
 }

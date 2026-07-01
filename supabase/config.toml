@@ -102,3 +102,6 @@ verify_jwt = true   # caller JWT is required; function additionally enforces rol
 
 [functions.admin-update-user]
 verify_jwt = true   # caller JWT is required; function additionally enforces role = 'admin'
+
+[functions.geocode-address]
+verify_jwt = true   # admin/management branch setup — geocodes pasted Google Maps addresses

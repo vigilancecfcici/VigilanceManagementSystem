@@ -989,11 +989,11 @@ function BranchModal({
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text').trim();
                           if (pasted.length < 10) return;
+                          e.preventDefault();
+                          field.onChange(pasted);
                           if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
-                          window.setTimeout(() => {
-                            lastGeocodedAddressRef.current = pasted;
-                            void handleAddressGeocode(pasted);
-                          }, 100);
+                          lastGeocodedAddressRef.current = pasted;
+                          void handleAddressGeocode(pasted);
                         }}
                         onBlur={(e) => {
                           field.onBlur();
@@ -1083,7 +1083,7 @@ function BranchModal({
                       <Input
                         type="number"
                         step="any"
-                        placeholder="10.1076"
+                        placeholder="Auto-detected"
                         {...field}
                         value={field.value ?? ''}
                       />
@@ -1103,7 +1103,7 @@ function BranchModal({
                       <Input
                         type="number"
                         step="any"
-                        placeholder="76.3475"
+                        placeholder="Auto-detected"
                         {...field}
                         value={field.value ?? ''}
                       />
