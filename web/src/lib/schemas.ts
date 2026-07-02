@@ -54,6 +54,8 @@ export const branchSchema = z
     location: optionalString,
     city: optionalString,
     region: optionalString,
+    incharge_name: optionalString,
+    incharge_phone: optionalString,
     latitude: optionalNumber({ min: -90, max: 90 }),
     longitude: optionalNumber({ min: -180, max: 180 }),
     geofence_radius: z.preprocess(

@@ -50,6 +50,8 @@ interface Branch {
   location: string;
   city: string;
   region: string;
+  incharge_name?: string | null;
+  incharge_phone?: string | null;
   is_active: boolean;
   deleted_at?: string | null;
   latitude: number | null;
@@ -578,6 +580,7 @@ function BranchesTab() {
         .from('branches')
         .select(
           `id, branch_name, branch_type_id, location, city, region, latitude, longitude,
+           incharge_name, incharge_phone,
            geofence_radius, is_active, deleted_at,
            branch_types:branch_type_id ( type_name )`,
         )
@@ -823,6 +826,8 @@ function BranchModal({
       location: branch?.location ?? '',
       city: branch?.city ?? '',
       region: branch?.region ?? '',
+      incharge_name: branch?.incharge_name ?? '',
+      incharge_phone: branch?.incharge_phone ?? '',
       latitude: branch?.latitude ?? undefined,
       longitude: branch?.longitude ?? undefined,
       geofence_radius: branch?.geofence_radius ?? 200,
@@ -875,7 +880,10 @@ function BranchModal({
       const result = await geocodeAddress(trimmed);
       form.setValue('location', trimmed, { shouldDirty: true });
       if (result.city) form.setValue('city', result.city, { shouldDirty: true });
-      if (result.district) form.setValue('region', result.district, { shouldDirty: true });
+      const currentDistrict = form.getValues('region')?.trim();
+      if (!currentDistrict && result.district) {
+        form.setValue('region', result.district, { shouldDirty: true });
+      }
       if (result.latitude != null && !Number.isNaN(result.latitude)) {
         form.setValue('latitude', result.latitude, { shouldDirty: true });
       }
@@ -910,6 +918,8 @@ function BranchModal({
       location: values.location ?? null,
       city: values.city ?? null,
       region: values.region ?? null,
+      incharge_name: values.incharge_name ?? null,
+      incharge_phone: values.incharge_phone ?? null,
       latitude: values.latitude ?? null,
       longitude: values.longitude ?? null,
       geofence_radius: values.geofence_radius,
@@ -1041,7 +1051,12 @@ function BranchModal({
                   <FormItem>
                     <FormLabel>District</FormLabel>
                     <FormControl>
-                      <select className="input w-full" {...field} value={field.value ?? ''}>
+                      <select
+                        className="input w-full"
+                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      >
                         <option value="">Select district</option>
                         {districtOptions.map((district) => (
                           <option key={district} value={district}>
@@ -1056,6 +1071,13 @@ function BranchModal({
                         placeholder="Or type a new district name and press Enter"
                         value={customDistrict}
                         onChange={(e) => setCustomDistrict(e.target.value)}
+                        onBlur={() => {
+                          const value = customDistrict.trim();
+                          if (value) {
+                            field.onChange(value);
+                            setCustomDistrict('');
+                          }
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -1068,6 +1090,34 @@ function BranchModal({
                         }}
                       />
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="incharge_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Incharge name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Manager name" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="incharge_phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Incharge phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. 9876543210" {...field} value={field.value ?? ''} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
