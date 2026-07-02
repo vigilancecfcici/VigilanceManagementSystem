@@ -45,14 +45,15 @@ export interface DistrictAssignmentRow {
   } | null;
 }
 
-interface StorePin {
+interface BranchPin {
   id: string;
   store_code: string | null;
-  name: string;
-  address: string | null;
-  store_incharge: string | null;
-  lat: number;
-  lng: number;
+  branch_name: string;
+  location: string | null;
+  incharge_name: string | null;
+  incharge_phone: string | null;
+  latitude: number;
+  longitude: number;
 }
 
 interface DistrictConnection {
@@ -149,22 +150,123 @@ export function KeralaBranchMap({
     return map;
   }, [assignments]);
 
-  const { data: districtStores = [] } = useQuery<StorePin[]>({
-    queryKey: ['district-stores', selectedDistrict],
+  const { data: branchPins = [] } = useQuery<BranchPin[]>({
+    queryKey: ['district-branches', selectedDistrict],
     enabled: !!selectedDistrict && zoom >= 10,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('stores')
-        .select('id, store_code, name, address, store_incharge, lat, lng')
+        .from('branches')
+        .select('id, store_code, branch_name, location, incharge_name, incharge_phone, latitude, longitude')
         .eq('region', selectedDistrict!)
-        .not('lat', 'is', null)
-        .not('lng', 'is', null);
+        .is('deleted_at', null)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null);
       if (error) throw error;
       return (data ?? []).filter(
-        (s): s is StorePin => s.lat != null && s.lng != null,
+        (b): b is BranchPin => b.latitude != null && b.longitude != null,
       );
     },
   });
+
+  const { data: branchDistrictCenters = [] } = useQuery<
+    Array<{ district: string; lat: number; lng: number; count: number }>
+  >({
+    queryKey: ['branch-district-centers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('branches')
+        .select('region, latitude, longitude')
+        .is('deleted_at', null)
+        .not('region', 'is', null)
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null);
+      if (error) throw error;
+
+      const sums = new Map<string, { lat: number; lng: number; count: number }>();
+      (data ?? []).forEach((row) => {
+        const district = String((row as { region?: string | null }).region ?? '').trim();
+        const latitude = Number((row as { latitude?: unknown }).latitude);
+        const longitude = Number((row as { longitude?: unknown }).longitude);
+        if (!district) return;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+        const prev = sums.get(district) ?? { lat: 0, lng: 0, count: 0 };
+        prev.lat += latitude;
+        prev.lng += longitude;
+        prev.count += 1;
+        sums.set(district, prev);
+      });
+
+      return Array.from(sums.entries()).map(([district, s]) => ({
+        district,
+        lat: s.lat / s.count,
+        lng: s.lng / s.count,
+        count: s.count,
+      }));
+    },
+  });
+
+  const districtColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    KERALA_DISTRICTS.forEach((d) => map.set(d.name, d.color));
+
+    const palette = [
+      '#3b82f6',
+      '#06b6d4',
+      '#8b5cf6',
+      '#ec4899',
+      '#f59e0b',
+      '#10b981',
+      '#6366f1',
+      '#14b8a6',
+      '#f97316',
+      '#ef4444',
+      '#84cc16',
+      '#a855f7',
+    ];
+
+    const hash = (s: string) => {
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return h;
+    };
+
+    branchDistrictCenters.forEach((d) => {
+      if (map.has(d.district)) return;
+      map.set(d.district, palette[hash(d.district) % palette.length]);
+    });
+
+    return map;
+  }, [branchDistrictCenters]);
+
+  const districtsToShow = useMemo(() => {
+    const byName = new Map<string, { name: string; lat: number; lng: number; color: string }>();
+    KERALA_DISTRICTS.forEach((d) => byName.set(d.name, { ...d }));
+
+    branchDistrictCenters.forEach((d) => {
+      if (byName.has(d.district)) return;
+      byName.set(d.district, {
+        name: d.district,
+        lat: d.lat,
+        lng: d.lng,
+        color: districtColorMap.get(d.district) ?? '#3b82f6',
+      });
+    });
+
+    // Ensure any district assignment appears on map,
+    // even if it has no branches yet (falls back to Kerala center).
+    assignments.forEach((a) => {
+      if (byName.has(a.district)) return;
+      byName.set(a.district, {
+        name: a.district,
+        lat: KERALA_CENTER.lat,
+        lng: KERALA_CENTER.lng,
+        color: districtColorMap.get(a.district) ?? '#3b82f6',
+      });
+    });
+
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [assignments, branchDistrictCenters, districtColorMap]);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,7 +370,7 @@ export function KeralaBranchMap({
             </React.Fragment>
           ))}
 
-        {KERALA_DISTRICTS.map((d) => {
+        {districtsToShow.map((d) => {
           const assignment = assignmentByDistrict[d.name];
           const officerName = assignment?.officer?.name ?? `${d.name} Officer`;
           const photo = assignment?.officer?.profile_photo_url ?? null;
@@ -290,20 +392,25 @@ export function KeralaBranchMap({
 
         {selectedDistrict &&
           zoom >= 10 &&
-          districtStores.map((store) => (
-            <Marker key={store.id} position={[store.lat, store.lng]}>
+          branchPins.map((b) => (
+            <Marker key={b.id} position={[b.latitude, b.longitude]}>
               <Popup>
                 <div className="text-sm space-y-1 min-w-[160px]">
-                  <p className="font-bold">{store.store_code ?? '—'}</p>
-                  <p>{store.name}</p>
-                  {store.address && (
-                    <p className="text-gray-600 text-xs">{store.address}</p>
+                  <p className="font-bold">{b.store_code ?? '—'}</p>
+                  <p>{b.branch_name}</p>
+                  {b.location && (
+                    <p className="text-gray-600 text-xs">{b.location}</p>
                   )}
-                  {store.store_incharge && (
+                  {b.incharge_name ? (
                     <p className="text-xs">
-                      In-charge: <strong>{store.store_incharge}</strong>
+                      In-charge: <strong>{b.incharge_name}</strong>
+                      {b.incharge_phone ? ` (${b.incharge_phone})` : ''}
                     </p>
-                  )}
+                  ) : b.incharge_phone ? (
+                    <p className="text-xs">
+                      In-charge phone: <strong>{b.incharge_phone}</strong>
+                    </p>
+                  ) : null}
                 </div>
               </Popup>
             </Marker>
