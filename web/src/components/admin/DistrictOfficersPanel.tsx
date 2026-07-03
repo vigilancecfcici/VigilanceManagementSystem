@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import type { DistrictAssignmentRow } from './KeralaBranchMap';
@@ -209,11 +209,25 @@ export function DistrictOfficersPanel() {
       const { data, error } = await supabase
         .from('branches')
         .select('id, region, assigned_officer_id')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .is('deleted_at', null);
       if (error) throw error;
       return data ?? [];
     },
   });
+
+  const districtsWithStores = useMemo(() => {
+    const set = new Set<string>();
+    branchAssignments.forEach((b) => {
+      if (b.region) set.add(b.region);
+    });
+    return set;
+  }, [branchAssignments]);
+
+  const visibleAssignments = useMemo(
+    () => assignments.filter((a) => districtsWithStores.has(a.district)),
+    [assignments, districtsWithStores],
+  );
 
   const { data: officerProfiles = [] } = useQuery({
     queryKey: ['officer-user-ids'],
@@ -260,7 +274,7 @@ export function DistrictOfficersPanel() {
               </tr>
             </thead>
             <tbody>
-              {assignments.map((row) => {
+              {visibleAssignments.map((row) => {
                 const name = row.officer?.name ?? 'Unassigned';
                 const storeCount = countAssignedStores(row.district, row.officer_id);
                 const officerProfile = officerProfiles.find((o) => o.id === row.officer_id);

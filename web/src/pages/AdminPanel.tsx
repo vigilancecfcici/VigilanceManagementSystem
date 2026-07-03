@@ -615,15 +615,29 @@ function BranchesTab() {
 
   const deleteBranch = useMutation({
     mutationFn: async (id: string) => {
+      const { data: branch, error: fetchErr } = await supabase
+        .from('branches')
+        .select('region')
+        .eq('id', id)
+        .single();
+      if (fetchErr) throw fetchErr;
+
       const { error } = await supabase
         .from('branches')
         .update({ is_active: false, deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;
+
+      if (branch?.region) {
+        await supabase.rpc('cleanup_orphaned_district', { p_district: branch.region });
+      }
     },
     onSuccess: () => {
       setEditBranch(null);
       qc.invalidateQueries({ queryKey: ['admin-branches'] });
+      qc.invalidateQueries({ queryKey: ['district-assignments'] });
+      qc.invalidateQueries({ queryKey: ['branch-district-centers'] });
+      qc.invalidateQueries({ queryKey: ['branch-officer-assignments'] });
     },
     onError: (err: Error) => window.alert(err.message || 'Failed to delete branch.'),
   });

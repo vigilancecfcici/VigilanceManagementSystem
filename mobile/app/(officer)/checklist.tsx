@@ -27,7 +27,12 @@ import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
 import { ToastMessage } from '../../components/ToastMessage';
 import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttachments';
-import { isViolationResponse, isCompliantResponse, responseButtonColors } from '../../lib/checklistScoring';
+import { isViolationResponse, isCompliantResponse } from '../../lib/checklistScoring';
+import {
+  normalizeOptionColorMap,
+  optionHighlightButtonColors,
+  type OptionColorMap,
+} from '../../lib/checklistOptionColors';
 import {
   uploadInspectionDocumentFile,
   uploadInspectionImageFile,
@@ -67,6 +72,7 @@ type ChecklistTemplateRow = {
   risk_level?: string | null;
   trigger_on_no?: boolean | null;
   options?: string[] | null;
+  option_colors?: OptionColorMap | null;
   risk_classifications?:
     | { risk_level?: string | null; trigger_on_no?: boolean | null }
     | { risk_level?: string | null; trigger_on_no?: boolean | null }[]
@@ -81,6 +87,7 @@ type ChecklistItem = {
   risk_level?: 'RED' | 'YELLOW' | 'GREEN';
   trigger_on_no: boolean;
   options: string[] | null;
+  option_colors: OptionColorMap | null;
 };
 
 export default function ChecklistScreen() {
@@ -213,7 +220,7 @@ export default function ChecklistScreen() {
       const { data, error } = await supabase
         .from('checklist_templates')
         .select(`
-          id, section, item_text, item_order, risk_level, trigger_on_no, options,
+          id, section, item_text, item_order, risk_level, trigger_on_no, options, option_colors,
           risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
             risk_level, trigger_on_no
           )
@@ -261,6 +268,7 @@ export default function ChecklistScreen() {
         risk_level: (rc?.risk_level ?? r.risk_level) as 'RED' | 'YELLOW' | 'GREEN' | undefined,
         trigger_on_no: rc?.trigger_on_no ?? r.trigger_on_no ?? false,
         options: Array.isArray(r.options) ? (r.options as string[]) : null,
+        option_colors: normalizeOptionColorMap(r.option_colors),
       };
     });
     setItems(mapped);
@@ -1321,22 +1329,25 @@ export default function ChecklistScreen() {
                         button.value === 'Bad';
                       const colors =
                         button.value === 'N/A'
-                          ? {
-                              activeColor: '#475569',
-                              activeBg: '#f1f5f9',
-                              inactiveColor: '#6b7280',
-                            }
+                          ? optionHighlightButtonColors(
+                              button.value,
+                              response,
+                              item.option_colors,
+                              triggerOnNo,
+                            )
                           : knownValue
-                            ? responseButtonColors(
-                                button.value as 'Yes' | 'No' | 'Good' | 'Moderate' | 'Bad',
-                                response as 'Yes' | 'No' | 'N/A' | 'Good' | 'Moderate' | 'Bad' | null,
+                            ? optionHighlightButtonColors(
+                                button.value,
+                                response,
+                                item.option_colors,
                                 triggerOnNo,
                               )
-                            : {
-                                activeColor: '#2563eb',
-                                activeBg: '#dbeafe',
-                                inactiveColor: '#6b7280',
-                              };
+                            : optionHighlightButtonColors(
+                                button.value,
+                                response,
+                                item.option_colors,
+                                triggerOnNo,
+                              );
                       return (
                         <TouchableOpacity
                           key={button.value}

@@ -19,6 +19,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { supabase } from '../../lib/supabase';
 import { resolvePrimaryStoreBranchTypeId } from '../../lib/branchTypes';
+import {
+  buildInitialOptionRows,
+  buildOptionColorPayload,
+  defaultColorForOption,
+  normalizeOptionColorMap,
+  type HighlightColor,
+  type OptionRow,
+} from '../../lib/checklistOptionColors';
 
 type RiskLevel = 'RED' | 'YELLOW' | 'GREEN';
 
@@ -44,11 +52,8 @@ interface ChecklistItem {
   branch_type_id: string | null;
   is_active: boolean;
   options: string[] | null;
+  option_colors: Record<string, HighlightColor> | null;
   risk_classification?: RiskClassificationRow | null;
-}
-
-function normalizeOptions(raw: string[]): string[] {
-  return raw.map((o) => o.trim()).filter(Boolean);
 }
 
 const RISK_PILL: Record<RiskLevel, string> = {
@@ -224,9 +229,9 @@ function ChecklistItemModal({
     requiresPhoto: rc?.requires_photo ?? false,
     minRemarkChars: rc?.min_remark_chars ?? 0,
   });
-  const initialOptions = item?.options?.length ? [...item.options] : [''];
-  const [requireOptions, setRequireOptions] = useState(!!item?.options?.length);
-  const [optionInputs, setOptionInputs] = useState<string[]>(initialOptions);
+  const initialOptionState = buildInitialOptionRows(item);
+  const [useCustomLabels, setUseCustomLabels] = useState(initialOptionState.useCustomLabels);
+  const [optionRows, setOptionRows] = useState<OptionRow[]>(initialOptionState.rows);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -242,11 +247,15 @@ function ChecklistItemModal({
       setError('Section and item text are required');
       return;
     }
-    const savedOptions = requireOptions ? normalizeOptions(optionInputs) : null;
-    if (requireOptions && !savedOptions?.length) {
-      setError('Add at least one option');
+    const trimmedRows = optionRows
+      .map((row) => ({ label: row.label.trim(), color: row.color }))
+      .filter((row) => row.label);
+    if (!trimmedRows.length) {
+      setError('Add at least one response option');
       return;
     }
+    const savedOptions = useCustomLabels ? trimmedRows.map((row) => row.label) : null;
+    const savedOptionColors = buildOptionColorPayload(trimmedRows);
     setLoading(true);
     setError('');
     try {
@@ -260,6 +269,7 @@ function ChecklistItemModal({
             item_text: itemText.trim(),
             branch_type_id: branchTypeId,
             options: savedOptions,
+            option_colors: savedOptionColors,
           })
           .eq('id', item.id);
         if (itemErr) throw itemErr;
@@ -275,6 +285,7 @@ function ChecklistItemModal({
           branch_type_id: branchTypeId,
           is_active: true,
           options: savedOptions,
+          option_colors: savedOptionColors,
         });
 
         const { error: rcErr } = await supabase
@@ -381,56 +392,101 @@ function ChecklistItemModal({
           />
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={requireOptions}
-            onChange={(e) => {
-              const on = e.target.checked;
-              setRequireOptions(on);
-              if (on && optionInputs.length === 0) setOptionInputs(['']);
-              if (!on) setOptionInputs(['']);
-            }}
-          />
-          Officer must select from options
-        </label>
-
-        {requireOptions && (
-          <div className="space-y-2">
-            <label className="label">Options / Dropdown Choices</label>
-            {optionInputs.map((opt, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <input
-                  className="input w-full"
-                  placeholder={`Option ${idx + 1}`}
-                  value={opt}
-                  onChange={(e) => {
-                    const next = [...optionInputs];
-                    next[idx] = e.target.value;
-                    setOptionInputs(next);
-                  }}
-                />
-                {optionInputs.length > 1 && (
+        <div className="space-y-2">
+          <label className="label">Response Options &amp; Highlight Colors</label>
+          <p className="text-xs text-gray-500">
+            Choose the color shown on the officer app when each option is selected.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={useCustomLabels}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setUseCustomLabels(on);
+                if (on) {
+                  setOptionRows(
+                    optionRows.length
+                      ? optionRows
+                      : [{ label: 'Option 1', color: 'GREEN' }],
+                  );
+                } else {
+                  setOptionRows(
+                    ['Yes', 'No', 'N/A'].map((label) => ({
+                      label,
+                      color:
+                        optionRows.find(
+                          (row) => row.label.toLowerCase() === label.toLowerCase(),
+                        )?.color ?? defaultColorForOption(label, risk.triggerOnNo),
+                    })),
+                  );
+                }
+              }}
+            />
+            Use custom option labels (instead of Yes / No / N/A)
+          </label>
+          {optionRows.map((row, idx) => (
+            <div key={idx} className="flex flex-wrap gap-2 items-center border border-gray-200 dark:border-gray-600 rounded-lg p-2">
+              <input
+                className="input flex-1 min-w-[120px]"
+                placeholder={`Option ${idx + 1}`}
+                value={row.label}
+                readOnly={!useCustomLabels}
+                onChange={(e) => {
+                  const next = [...optionRows];
+                  next[idx] = { ...next[idx], label: e.target.value };
+                  setOptionRows(next);
+                }}
+              />
+              <div className="flex gap-1.5">
+                {(['GREEN', 'YELLOW', 'RED'] as const).map((color) => (
                   <button
+                    key={color}
                     type="button"
-                    className="btn-xs btn-xs-red shrink-0"
-                    aria-label="Remove option"
-                    onClick={() => setOptionInputs(optionInputs.filter((_, i) => i !== idx))}
+                    title={`Highlight ${color.toLowerCase()}`}
+                    className={`px-2 py-1 rounded text-xs font-bold border ${
+                      row.color === color
+                        ? color === 'RED'
+                          ? 'bg-red-100 text-red-700 border-red-300'
+                          : color === 'YELLOW'
+                            ? 'bg-amber-100 text-amber-700 border-amber-300'
+                            : 'bg-green-100 text-green-700 border-green-300'
+                        : 'bg-gray-50 text-gray-400 border-gray-200'
+                    }`}
+                    onClick={() => {
+                      const next = [...optionRows];
+                      next[idx] = { ...next[idx], color };
+                      setOptionRows(next);
+                    }}
                   >
-                    ×
+                    {color}
                   </button>
-                )}
+                ))}
               </div>
-            ))}
+              {useCustomLabels && optionRows.length > 1 && (
+                <button
+                  type="button"
+                  className="btn-xs btn-xs-red shrink-0"
+                  aria-label="Remove option"
+                  onClick={() => setOptionRows(optionRows.filter((_, i) => i !== idx))}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {useCustomLabels && (
             <button
               type="button"
               className="btn-xs"
-              onClick={() => setOptionInputs([...optionInputs, ''])}
+              onClick={() =>
+                setOptionRows([...optionRows, { label: '', color: 'GREEN' }])
+              }
             >
               + Add Option
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
 
@@ -483,7 +539,7 @@ export function ChecklistAdminTab() {
       const query = supabase
         .from('checklist_templates')
         .select(
-          `id, section, item_text, item_order, branch_type_id, is_active, options,
+          `id, section, item_text, item_order, branch_type_id, is_active, options, option_colors,
           risk_classifications:risk_classifications!risk_classifications_checklist_item_id_fkey (
             id, risk_level, trigger_on_no, requires_photo, min_remark_chars
           )`,
@@ -508,6 +564,7 @@ export function ChecklistAdminTab() {
           branch_type_id: i.branch_type_id as string | null,
           is_active: i.is_active as boolean,
           options: Array.isArray(i.options) ? (i.options as string[]) : null,
+          option_colors: normalizeOptionColorMap(i.option_colors),
           risk_classification: rc
             ? {
                 id: (rc as RiskClassificationRow).id,

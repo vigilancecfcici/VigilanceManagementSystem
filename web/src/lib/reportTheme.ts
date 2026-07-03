@@ -147,6 +147,8 @@ export const REPORT_HTML_CSS = `
     border-radius: 12px;
     overflow: hidden;
     background: #ffffff;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .section-head {
     padding: 10px 14px;
@@ -175,7 +177,13 @@ export const REPORT_HTML_CSS = `
     border-bottom: 1px solid #f1f5f9;
     vertical-align: top;
   }
-  .report-table tr:last-child td { border-bottom: none; }
+  .report-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-table thead {
+    display: table-header-group;
+  }
   .report-table tr.violation { background: #fef2f2; }
   .report-table tr.compliant { background: #f8fffb; }
   .resp-badge {

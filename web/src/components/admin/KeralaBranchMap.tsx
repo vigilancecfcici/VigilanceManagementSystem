@@ -243,6 +243,7 @@ export function KeralaBranchMap({
     const byName = new Map<string, { name: string; lat: number; lng: number; color: string }>();
     KERALA_DISTRICTS.forEach((d) => byName.set(d.name, { ...d }));
 
+    // Only show districts that still have active, non-deleted branches.
     branchDistrictCenters.forEach((d) => {
       if (byName.has(d.district)) return;
       byName.set(d.district, {
@@ -253,20 +254,8 @@ export function KeralaBranchMap({
       });
     });
 
-    // Ensure any district assignment appears on map,
-    // even if it has no branches yet (falls back to Kerala center).
-    assignments.forEach((a) => {
-      if (byName.has(a.district)) return;
-      byName.set(a.district, {
-        name: a.district,
-        lat: KERALA_CENTER.lat,
-        lng: KERALA_CENTER.lng,
-        color: districtColorMap.get(a.district) ?? '#3b82f6',
-      });
-    });
-
     return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [assignments, branchDistrictCenters, districtColorMap]);
+  }, [branchDistrictCenters, districtColorMap]);
 
   useEffect(() => {
     let cancelled = false;

@@ -290,11 +290,11 @@ function SectionTable({
 }) {
   const theme = sectionTheme(section);
   return (
-    <View style={styles.sectionBlock} wrap={false}>
+    <View style={styles.sectionBlock}>
       <View style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
         <Text style={{ color: theme.text }}>{section}</Text>
       </View>
-      <View style={styles.tableHeader}>
+      <View style={styles.tableHeader} wrap={false}>
         <Text style={[styles.tableHeaderCell, styles.colNum]}>#</Text>
         <Text style={[styles.tableHeaderCell, styles.colItem]}>Checklist item</Text>
         <Text style={[styles.tableHeaderCell, styles.colResp]}>Response</Text>
@@ -306,6 +306,7 @@ function SectionTable({
         return (
           <View
             key={`${section}-${idx}`}
+            wrap={false}
             style={[
               styles.tableRow,
               status === 'fail' ? styles.tableRowFail : status === 'pass' ? styles.tableRowPass : {},
@@ -700,6 +701,8 @@ export async function generateInspectionPdf(
   }
 
   const attempts: Array<{ label: string; run: () => Promise<Blob> }> = [
+    { label: 'browser-layout-with-images', run: () => renderPdfBlob(withImages, options) },
+    { label: 'browser-layout-text-only', run: () => renderPdfBlob(withoutImageEvidence(sanitized), options) },
     {
       label: 'html-color-layout-with-images',
       run: async () => {
@@ -718,8 +721,6 @@ export async function generateInspectionPdf(
         return renderHtmlDocumentToPdfBlob(html);
       },
     },
-    { label: 'browser-layout-with-images', run: () => renderPdfBlob(withImages, options) },
-    { label: 'browser-layout-text-only', run: () => renderPdfBlob(withoutImageEvidence(sanitized), options) },
     { label: 'minimal-layout-text-only', run: () => renderMinimalPdfBlob(withoutImageEvidence(sanitized)) },
   ];
 
