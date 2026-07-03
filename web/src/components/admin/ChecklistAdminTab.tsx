@@ -25,6 +25,7 @@ import {
   defaultColorForOption,
   normalizeOptionColorMap,
   type HighlightColor,
+  type OptionColorMap,
   type OptionRow,
 } from '../../lib/checklistOptionColors';
 
@@ -52,7 +53,7 @@ interface ChecklistItem {
   branch_type_id: string | null;
   is_active: boolean;
   options: string[] | null;
-  option_colors: Record<string, HighlightColor> | null;
+  option_colors: OptionColorMap | null;
   risk_classification?: RiskClassificationRow | null;
 }
 
