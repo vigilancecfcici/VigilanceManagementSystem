@@ -24,7 +24,6 @@ import {
   buildOptionColorPayload,
   defaultColorForOption,
   normalizeOptionColorMap,
-  type HighlightColor,
   type OptionColorMap,
   type OptionRow,
 } from '../../lib/checklistOptionColors';
