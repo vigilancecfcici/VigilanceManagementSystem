@@ -607,10 +607,36 @@ function withoutImageEvidence(data: InspectionPdfData): InspectionPdfData {
   };
 }
 
+const PDF_ATTEMPT_TIMEOUT_MS = 25_000;
+const PDF_IMAGE_FETCH_TIMEOUT_MS = 8_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   if (url.startsWith('data:')) return url;
   try {
-    const response = await fetch(await resolveInspectionMediaUrl(url));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PDF_IMAGE_FETCH_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(await resolveInspectionMediaUrl(url), { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!response.ok) return null;
     const blob = await response.blob();
     if (!blob.type.startsWith('image/')) return null;
@@ -700,20 +726,25 @@ export async function generateInspectionPdf(
     if (import.meta.env.DEV) console.warn('[PDF] Could not embed images, continuing with text-only export:', error);
   }
 
-  const attempts: Array<{ label: string; run: () => Promise<Blob> }> = [
-    { label: 'browser-layout-with-images', run: () => renderPdfBlob(withImages, options) },
-    { label: 'browser-layout-text-only', run: () => renderPdfBlob(withoutImageEvidence(sanitized), options) },
+  const attempts: Array<{ label: string; timeoutMs: number; run: () => Promise<Blob> }> = [
     {
-      label: 'html-color-layout-with-images',
-      run: async () => {
-        const html = buildStoreInspectionReportHtml(withImages, {
-          documentTitle: options?.documentTitle ?? 'STORE INSPECTION REPORT',
-        });
-        return renderHtmlDocumentToPdfBlob(html);
-      },
+      label: 'browser-layout-text-only',
+      timeoutMs: PDF_ATTEMPT_TIMEOUT_MS,
+      run: () => renderPdfBlob(withoutImageEvidence(sanitized), options),
+    },
+    {
+      label: 'browser-layout-with-images',
+      timeoutMs: PDF_ATTEMPT_TIMEOUT_MS,
+      run: () => renderPdfBlob(withImages, options),
+    },
+    {
+      label: 'minimal-layout-text-only',
+      timeoutMs: PDF_ATTEMPT_TIMEOUT_MS,
+      run: () => renderMinimalPdfBlob(withoutImageEvidence(sanitized)),
     },
     {
       label: 'html-color-layout-text-only',
+      timeoutMs: 45_000,
       run: async () => {
         const html = buildStoreInspectionReportHtml(withoutImageEvidence(sanitized), {
           documentTitle: options?.documentTitle ?? 'STORE INSPECTION REPORT',
@@ -721,13 +752,22 @@ export async function generateInspectionPdf(
         return renderHtmlDocumentToPdfBlob(html);
       },
     },
-    { label: 'minimal-layout-text-only', run: () => renderMinimalPdfBlob(withoutImageEvidence(sanitized)) },
+    {
+      label: 'html-color-layout-with-images',
+      timeoutMs: 45_000,
+      run: async () => {
+        const html = buildStoreInspectionReportHtml(withImages, {
+          documentTitle: options?.documentTitle ?? 'STORE INSPECTION REPORT',
+        });
+        return renderHtmlDocumentToPdfBlob(html);
+      },
+    },
   ];
 
   let lastError: unknown;
   for (const attempt of attempts) {
     try {
-      const blob = await attempt.run();
+      const blob = await withTimeout(attempt.run(), attempt.timeoutMs, attempt.label);
       if (!blob || blob.size === 0) {
         throw new Error(`PDF engine "${attempt.label}" returned an empty file.`);
       }

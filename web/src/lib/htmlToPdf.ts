@@ -108,36 +108,46 @@ async function addCanvasToPdf(
   startY: number,
 ): Promise<number> {
   const contentWidth = pageWidth - margin * 2;
-  const contentHeight = pageHeight - margin * 2;
+  const maxSliceHeight = pageHeight - margin * 2;
   const imgWidth = contentWidth;
   const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  const sliceScale = canvas.width / imgWidth;
 
   let offsetY = 0;
   let currentY = startY;
 
-  while (offsetY < imgHeight) {
-    const sliceHeight = Math.min(contentHeight - (currentY - margin), imgHeight - offsetY);
-    if (currentY + sliceHeight > pageHeight - margin) {
+  while (offsetY < imgHeight - 0.25) {
+    let availableHeight = pageHeight - margin - currentY;
+    if (availableHeight < 12) {
       pdf.addPage();
       currentY = margin;
+      availableHeight = maxSliceHeight;
     }
 
+    const remainingImgHeight = imgHeight - offsetY;
+    const sliceHeight = Math.min(availableHeight, remainingImgHeight, maxSliceHeight);
+    if (sliceHeight <= 0) {
+      pdf.addPage();
+      currentY = margin;
+      continue;
+    }
+
+    const sourceHeight = Math.max(1, Math.ceil(sliceHeight * sliceScale));
     const sliceCanvas = document.createElement('canvas');
-    const sliceScale = canvas.width / imgWidth;
     sliceCanvas.width = canvas.width;
-    sliceCanvas.height = Math.ceil(sliceHeight * sliceScale);
+    sliceCanvas.height = sourceHeight;
     const ctx = sliceCanvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(
         canvas,
         0,
-        offsetY * sliceScale,
+        Math.floor(offsetY * sliceScale),
         canvas.width,
-        sliceCanvas.height,
+        sourceHeight,
         0,
         0,
         canvas.width,
-        sliceCanvas.height,
+        sourceHeight,
       );
       pdf.addImage(
         sliceCanvas.toDataURL('image/jpeg', 0.92),
@@ -150,7 +160,7 @@ async function addCanvasToPdf(
     }
 
     offsetY += sliceHeight;
-    currentY += sliceHeight + 8;
+    currentY += sliceHeight + 4;
   }
 
   return currentY;
@@ -214,6 +224,9 @@ export async function renderHtmlDocumentToPdfBlob(documentHtml: string): Promise
         pdf.addPage();
         currentY = margin;
       }
+
+      // Yield so long exports do not freeze the browser UI thread.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     return pdf.output('blob');
