@@ -174,10 +174,10 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
   }, [search, branches, nearMeActive]);
 
   useEffect(() => {
-    if (locationGate.status === 'within_range' && locationGate.officerCoords) {
+    if (locationGate.officerCoords) {
       setOfficerCoords(locationGate.officerCoords);
     }
-  }, [locationGate.status, locationGate.officerCoords]);
+  }, [locationGate.officerCoords]);
 
   const fetchBranches = async () => {
     setLoading(true);

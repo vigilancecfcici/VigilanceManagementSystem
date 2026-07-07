@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 
 import { supabase } from './supabase';
+import { captureOfficerLocation } from './captureOfficerLocation';
 import { claimBranchInspection } from './branchLocks';
 import { getDeviceAudit } from './deviceInfo';
 import { uploadInspectionFiles } from './uploadInspectionFiles';
@@ -259,6 +260,13 @@ async function syncOne(item: QueuedInspection): Promise<void> {
   const fallbackTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const normalizedTimeOut = normalizeTime(timeOut, fallbackTime);
   const normalizedTimeIn = normalizeTime(timeIn, normalizedTimeOut);
+  const submitCoords = await captureOfficerLocation(
+    officerLat != null && officerLon != null
+      ? { latitude: officerLat, longitude: officerLon }
+      : null,
+  );
+  const resolvedOfficerLat = submitCoords?.latitude ?? officerLat;
+  const resolvedOfficerLon = submitCoords?.longitude ?? officerLon;
 
   let resolvedId = inspectionId;
   if (resolvedId) {
@@ -274,8 +282,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         status: 'submitted',
         submitted_at: submittedAt,
         edit_window_expires_at: editWindowExpiresAt,
-        officer_latitude: officerLat,
-        officer_longitude: officerLon,
+        officer_latitude: resolvedOfficerLat,
+        officer_longitude: resolvedOfficerLon,
         sync_status: 'synced',
         device_id: audit.deviceId,
         app_version: audit.appVersion,
@@ -310,8 +318,8 @@ async function syncOne(item: QueuedInspection): Promise<void> {
         status: 'submitted',
         submitted_at: submittedAt,
         edit_window_expires_at: editWindowExpiresAt,
-        officer_latitude: officerLat,
-        officer_longitude: officerLon,
+        officer_latitude: resolvedOfficerLat,
+        officer_longitude: resolvedOfficerLon,
         sync_status: 'synced',
         device_id: audit.deviceId,
         app_version: audit.appVersion,

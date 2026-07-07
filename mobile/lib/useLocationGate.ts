@@ -50,13 +50,6 @@ export function useLocationGate(
   const [officerCoords, setOfficerCoords] = useState<OfficerCoords | null>(null);
 
   const check = useCallback(async () => {
-    if (branchLat == null || branchLon == null) {
-      setStatus('no_branch_coords');
-      setDistanceMetres(null);
-      setOfficerCoords(null);
-      return;
-    }
-
     try {
       setStatus('requesting_permission');
       const { status: permStatus } =
@@ -75,6 +68,12 @@ export function useLocationGate(
       const { latitude, longitude } = position.coords;
       const coords: OfficerCoords = { latitude, longitude };
       setOfficerCoords(coords);
+
+      if (branchLat == null || branchLon == null) {
+        setStatus('no_branch_coords');
+        setDistanceMetres(null);
+        return;
+      }
 
       const dist = haversineMetres(latitude, longitude, branchLat, branchLon);
       setDistanceMetres(Math.round(dist));

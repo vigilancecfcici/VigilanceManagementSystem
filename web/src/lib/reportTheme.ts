@@ -147,8 +147,6 @@ export const REPORT_HTML_CSS = `
     border-radius: 12px;
     overflow: hidden;
     background: #ffffff;
-    break-inside: avoid;
-    page-break-inside: avoid;
   }
   .section-head {
     padding: 10px 14px;
@@ -178,8 +176,8 @@ export const REPORT_HTML_CSS = `
     vertical-align: top;
   }
   .report-table tr {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: auto;
+    page-break-inside: auto;
   }
   .report-table thead {
     display: table-header-group;

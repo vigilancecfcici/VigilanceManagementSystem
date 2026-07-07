@@ -28,75 +28,9 @@ async function captureElement(
     logging: false,
     width,
     windowWidth: width,
+    scrollY: 0,
+    scrollX: 0,
   });
-}
-
-function splitTableSection(section: HTMLElement): HTMLElement[] {
-  const table = section.querySelector('table.report-table');
-  if (!table) return [section];
-
-  const thead = table.querySelector('thead');
-  const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
-  if (bodyRows.length <= 1) return [section];
-
-  const sectionHead = section.querySelector('.section-head');
-  const chunks: HTMLElement[] = [];
-  const ROWS_PER_CHUNK = 4;
-
-  for (let i = 0; i < bodyRows.length; i += ROWS_PER_CHUNK) {
-    const chunk = document.createElement('div');
-    chunk.className = section.className;
-    chunk.style.cssText = section.style.cssText;
-
-    if (sectionHead && i === 0) {
-      chunk.appendChild(sectionHead.cloneNode(true));
-    } else if (sectionHead) {
-      const headClone = sectionHead.cloneNode(true) as HTMLElement;
-      chunk.appendChild(headClone);
-    }
-
-    const tableClone = document.createElement('table');
-    tableClone.className = table.className;
-    if (thead) tableClone.appendChild(thead.cloneNode(true));
-
-    const tbody = document.createElement('tbody');
-    bodyRows.slice(i, i + ROWS_PER_CHUNK).forEach((row) => {
-      tbody.appendChild(row.cloneNode(true));
-    });
-    tableClone.appendChild(tbody);
-    chunk.appendChild(tableClone);
-    chunks.push(chunk);
-  }
-
-  return chunks.length ? chunks : [section];
-}
-
-function collectPageSegments(shell: HTMLElement): HTMLElement[] {
-  const segments: HTMLElement[] = [];
-
-  const pushSegments = (selector: string, splitTables = false) => {
-    shell.querySelectorAll(selector).forEach((node) => {
-      const el = node as HTMLElement;
-      if (splitTables && el.classList.contains('section-block') && el.querySelector('table.report-table')) {
-        segments.push(...splitTableSection(el));
-      } else {
-        segments.push(el);
-      }
-    });
-  };
-
-  pushSegments(':scope > .report-hero');
-  pushSegments(':scope > .report-part');
-  pushSegments(':scope .report-body > .report-part');
-  pushSegments(':scope .report-body .section-block', true);
-  pushSegments(':scope .report-body .summary-strip');
-  pushSegments(':scope > .report-footer');
-
-  if (!segments.length) {
-    segments.push(shell);
-  }
-
-  return segments;
 }
 
 async function addCanvasToPdf(
@@ -132,16 +66,19 @@ async function addCanvasToPdf(
       continue;
     }
 
+    const sourceY = Math.floor(offsetY * sliceScale);
     const sourceHeight = Math.max(1, Math.ceil(sliceHeight * sliceScale));
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width = canvas.width;
     sliceCanvas.height = sourceHeight;
     const ctx = sliceCanvas.getContext('2d');
     if (ctx) {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
       ctx.drawImage(
         canvas,
         0,
-        Math.floor(offsetY * sliceScale),
+        sourceY,
         canvas.width,
         sourceHeight,
         0,
@@ -160,7 +97,12 @@ async function addCanvasToPdf(
     }
 
     offsetY += sliceHeight;
-    currentY += sliceHeight + 4;
+    currentY += sliceHeight;
+
+    if (offsetY < imgHeight - 0.25 && currentY >= pageHeight - margin - 1) {
+      pdf.addPage();
+      currentY = margin;
+    }
   }
 
   return currentY;
@@ -195,39 +137,8 @@ export async function renderHtmlDocumentToPdfBlob(documentHtml: string): Promise
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 24;
 
-    const segments = collectPageSegments(target);
-    let currentY = margin;
-
-    for (const segment of segments) {
-      const wrapper = document.createElement('div');
-      wrapper.style.width = '920px';
-      wrapper.style.background = '#f8fafc';
-      wrapper.appendChild(segment.cloneNode(true));
-      host.appendChild(wrapper);
-
-      const canvas = await captureElement(wrapper, html2canvas, 920);
-      wrapper.remove();
-
-      const contentWidth = pageWidth - margin * 2;
-      const segmentHeight = (canvas.height * contentWidth) / canvas.width;
-      const available = pageHeight - margin - currentY;
-
-      if (segmentHeight > available && currentY > margin) {
-        pdf.addPage();
-        currentY = margin;
-      }
-
-      currentY = await addCanvasToPdf(pdf, canvas, pageWidth, pageHeight, margin, currentY);
-      currentY += 6;
-
-      if (currentY > pageHeight - margin * 2) {
-        pdf.addPage();
-        currentY = margin;
-      }
-
-      // Yield so long exports do not freeze the browser UI thread.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
+    const canvas = await captureElement(target, html2canvas, 920);
+    await addCanvasToPdf(pdf, canvas, pageWidth, pageHeight, margin, margin);
 
     return pdf.output('blob');
   } finally {

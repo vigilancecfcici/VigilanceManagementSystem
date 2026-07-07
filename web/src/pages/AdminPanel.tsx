@@ -926,6 +926,29 @@ function BranchModal({
       return;
     }
     setSubmitError(null);
+
+    let latitude = values.latitude ?? null;
+    let longitude = values.longitude ?? null;
+    const address = values.location?.trim() ?? '';
+
+    if ((latitude == null || longitude == null) && address.length >= 10) {
+      try {
+        const geocoded = await geocodeAddress(address);
+        if (geocoded.latitude != null && geocoded.longitude != null) {
+          latitude = geocoded.latitude;
+          longitude = geocoded.longitude;
+          if (!values.city && geocoded.city) {
+            form.setValue('city', geocoded.city, { shouldDirty: true });
+          }
+          if (!values.region && geocoded.district) {
+            form.setValue('region', geocoded.district, { shouldDirty: true });
+          }
+        }
+      } catch {
+        // Save proceeds with address only — geofence will stay unverified until coords are set.
+      }
+    }
+
     const payload = {
       branch_name: values.name,
       branch_type_id: storeTypeId,
@@ -934,8 +957,8 @@ function BranchModal({
       region: values.region ?? null,
       incharge_name: values.incharge_name ?? null,
       incharge_phone: values.incharge_phone ?? null,
-      latitude: values.latitude ?? null,
-      longitude: values.longitude ?? null,
+      latitude,
+      longitude,
       geofence_radius: values.geofence_radius,
       is_active: true,
     };

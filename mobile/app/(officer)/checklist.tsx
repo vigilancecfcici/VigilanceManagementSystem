@@ -25,6 +25,7 @@ import { saveDraft, loadDraft, deleteDraft, type DraftForm } from '../../lib/sto
 import { queueInspection } from '../../lib/syncQueue';
 import { getDeviceAudit } from '../../lib/deviceInfo';
 import { useLocationPing } from '../../lib/useLocationPing';
+import { captureOfficerLocation } from '../../lib/captureOfficerLocation';
 import { ToastMessage } from '../../components/ToastMessage';
 import { ItemAttachments, type ItemAttachment } from '../../components/ItemAttachments';
 import { isViolationResponse, isCompliantResponse } from '../../lib/checklistScoring';
@@ -936,6 +937,14 @@ export default function ChecklistScreen() {
             const effectiveTimeIn = toValidTime(timeIn, effectiveTimeOut);
             if (effectiveTimeIn !== timeIn) setTimeIn(effectiveTimeIn);
             setTimeOut(effectiveTimeOut);
+            const routeOfficerLat = officerLat ? parseFloat(officerLat) : null;
+            const routeOfficerLon = officerLon ? parseFloat(officerLon) : null;
+            const submitCoords = await captureOfficerLocation(
+              routeOfficerLat != null && routeOfficerLon != null
+                ? { latitude: routeOfficerLat, longitude: routeOfficerLon }
+                : null,
+            );
+
             const netState = await NetInfo.fetch();
             if (!netState.isConnected) {
               // If a RED already triggered while online, an inspections row
@@ -952,8 +961,8 @@ export default function ChecklistScreen() {
                 generalRemark,
                 itemFiles,
                 savedAt: new Date().toISOString(),
-                officerLat: officerLat ? parseFloat(officerLat) : null,
-                officerLon: officerLon ? parseFloat(officerLon) : null,
+                officerLat: submitCoords?.latitude ?? routeOfficerLat,
+                officerLon: submitCoords?.longitude ?? routeOfficerLon,
                 inspectionId: activeInspectionId ?? undefined,
                 previousRiskItemIds: Array.from(previousRisks),
               });
@@ -1027,6 +1036,8 @@ export default function ChecklistScreen() {
                   time_out: effectiveTimeOut,
                   submitted_at: submittedAt,
                   edit_window_expires_at: editWindowExpiresAt,
+                  officer_latitude: submitCoords?.latitude ?? routeOfficerLat,
+                  officer_longitude: submitCoords?.longitude ?? routeOfficerLon,
                   ...(isReopening ? { edited_at: submittedAt, is_edited: true } : {}),
                   sync_status: 'synced',
                   device_id: submitAudit.deviceId,

@@ -82,7 +82,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#cbd5e1',
     borderRadius: 8,
-    overflow: 'hidden',
     backgroundColor: '#ffffff',
   },
   sectionHead: {
@@ -290,8 +289,11 @@ function SectionTable({
 }) {
   const theme = sectionTheme(section);
   return (
-    <View style={styles.sectionBlock}>
-      <View style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
+    <View style={styles.sectionBlock} wrap>
+      <View
+        wrap={false}
+        style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}
+      >
         <Text style={{ color: theme.text }}>{section}</Text>
       </View>
       <View style={styles.tableHeader} wrap={false}>
@@ -306,7 +308,6 @@ function SectionTable({
         return (
           <View
             key={`${section}-${idx}`}
-            wrap={false}
             style={[
               styles.tableRow,
               status === 'fail' ? styles.tableRowFail : status === 'pass' ? styles.tableRowPass : {},
