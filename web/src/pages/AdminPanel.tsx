@@ -24,7 +24,7 @@ import { ChecklistAdminTab } from '../components/admin/ChecklistAdminTab';
 import { KpiDetailModal } from '../components/dashboard/KpiDetailModal';
 import type { PrefillNewUser } from '../types/accountRequest';
 import { KERALA_DISTRICT_NAMES } from '../lib/storeRegions';
-import { geocodeAddress } from '../lib/geocodeAddress';
+import { parseEmbeddedCoordinates, resolveBranchCoordinates } from '../lib/geocodeAddress';
 import { resolvePrimaryStoreBranchTypeId } from '../lib/branchTypes';
 import { parseAdminTab, adminTabLabel } from '../lib/adminTabs';
 import { downloadAdminUnifiedReport } from '../lib/adminReportExport';
@@ -882,33 +882,58 @@ function BranchModal({
     }, 800);
   };
 
+  const applyGeocodeResult = (result: Awaited<ReturnType<typeof resolveBranchCoordinates>>, trimmed: string) => {
+    form.setValue('location', trimmed, { shouldDirty: true });
+    if (result.city) form.setValue('city', result.city, { shouldDirty: true });
+    const currentDistrict = form.getValues('region')?.trim();
+    if (!currentDistrict && result.district) {
+      form.setValue('region', result.district, { shouldDirty: true });
+    }
+    if (result.latitude != null && !Number.isNaN(result.latitude)) {
+      form.setValue('latitude', result.latitude, { shouldDirty: true, shouldValidate: true });
+    }
+    if (result.longitude != null && !Number.isNaN(result.longitude)) {
+      form.setValue('longitude', result.longitude, { shouldDirty: true, shouldValidate: true });
+    }
+  };
+
   const handleAddressGeocode = async (address: string) => {
     const trimmed = address.trim();
     if (trimmed.length < 10) return;
 
     setGeocoding(true);
     setGeocodeError(null);
+
+    const embedded = parseEmbeddedCoordinates(trimmed);
+    if (embedded) {
+      applyGeocodeResult(
+        {
+          city: form.getValues('city') ?? null,
+          district: form.getValues('region') ?? null,
+          latitude: embedded.latitude,
+          longitude: embedded.longitude,
+        },
+        trimmed,
+      );
+      setGeocoding(false);
+      return;
+    }
+
     form.setValue('latitude', undefined, { shouldDirty: true });
     form.setValue('longitude', undefined, { shouldDirty: true });
     try {
-      const result = await geocodeAddress(trimmed);
-      form.setValue('location', trimmed, { shouldDirty: true });
-      if (result.city) form.setValue('city', result.city, { shouldDirty: true });
-      const currentDistrict = form.getValues('region')?.trim();
-      if (!currentDistrict && result.district) {
-        form.setValue('region', result.district, { shouldDirty: true });
-      }
-      if (result.latitude != null && !Number.isNaN(result.latitude)) {
-        form.setValue('latitude', result.latitude, { shouldDirty: true });
-      }
-      if (result.longitude != null && !Number.isNaN(result.longitude)) {
-        form.setValue('longitude', result.longitude, { shouldDirty: true });
-      }
+      const result = await resolveBranchCoordinates({
+        location: trimmed,
+        name: form.getValues('name'),
+        city: form.getValues('city'),
+        region: form.getValues('region'),
+      });
+      applyGeocodeResult(result, trimmed);
       if (result.latitude == null || result.longitude == null) {
-        setGeocodeError('Could not detect coordinates for this address. Try pasting the full Google Maps address or pincode.');
+        setGeocodeError('Could not detect coordinates. Paste the full Google Maps address, share link, or pin coordinates.');
       }
     } catch {
-      setGeocodeError('Address lookup failed. Fill fields manually.');
+      setGeocodeError('Address lookup failed. Enter latitude and longitude manually.');
     } finally {
       setGeocoding(false);
     }
@@ -929,24 +954,26 @@ function BranchModal({
 
     let latitude = values.latitude ?? null;
     let longitude = values.longitude ?? null;
-    const address = values.location?.trim() ?? '';
 
-    if ((latitude == null || longitude == null) && address.length >= 10) {
-      try {
-        const geocoded = await geocodeAddress(address);
-        if (geocoded.latitude != null && geocoded.longitude != null) {
-          latitude = geocoded.latitude;
-          longitude = geocoded.longitude;
-          if (!values.city && geocoded.city) {
-            form.setValue('city', geocoded.city, { shouldDirty: true });
-          }
-          if (!values.region && geocoded.district) {
-            form.setValue('region', geocoded.district, { shouldDirty: true });
-          }
-        }
-      } catch {
-        // Save proceeds with address only — geofence will stay unverified until coords are set.
+    if (latitude == null || longitude == null) {
+      const resolved = await resolveBranchCoordinates({
+        location: values.location,
+        name: values.name,
+        city: values.city,
+        region: values.region,
+      });
+      if (resolved.latitude != null && resolved.longitude != null) {
+        latitude = resolved.latitude;
+        longitude = resolved.longitude;
+        applyGeocodeResult(resolved, values.location?.trim() ?? '');
       }
+    }
+
+    if (latitude == null || longitude == null) {
+      setSubmitError(
+        'GPS coordinates are required. Paste the Google Maps address or location link so the branch can be pinned automatically.',
+      );
+      return;
     }
 
     const payload = {
@@ -1056,7 +1083,7 @@ function BranchModal({
                       <FormDescription>Detecting city, district, and coordinates…</FormDescription>
                     ) : (
                       <FormDescription>
-                        Paste an address to auto-fill city, district, latitude, and longitude.
+                        Paste a Google Maps address or share link — city, district, and map pin update automatically.
                       </FormDescription>
                     )}
                     {geocodeError ? (

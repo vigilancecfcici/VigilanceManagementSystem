@@ -85,6 +85,14 @@ export const branchSchema = z
         path: [hasLat ? 'longitude' : 'latitude'],
       });
     }
+    if (!hasLat || !hasLng) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'GPS coordinates are required so officers can verify store location. Paste a full Google Maps address or enter latitude and longitude.',
+        path: ['latitude'],
+      });
+    }
   });
 
 export type BranchFormValues = z.infer<typeof branchSchema>;

@@ -299,3 +299,67 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult> {
 
   return geocodeAddressLocal(trimmed);
 }
+
+function uniqueQueries(queries: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const results: string[] = [];
+  for (const query of queries) {
+    const trimmed = query?.trim() ?? '';
+    if (trimmed.length < 10 || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    results.push(trimmed);
+  }
+  return results;
+}
+
+/** Resolve branch coordinates using address, maps links, and fallback location queries. */
+export async function resolveBranchCoordinates(input: {
+  location?: string | null;
+  name?: string | null;
+  city?: string | null;
+  region?: string | null;
+}): Promise<GeocodeResult> {
+  const location = input.location?.trim() ?? '';
+  const name = input.name?.trim() ?? '';
+  const city = input.city?.trim() ?? '';
+  const region = input.region?.trim() ?? '';
+  const districtFromText = matchDistrictFromText(location || [name, city, region].join(', '));
+  const cityFromText = parseCityFromAddress(location) ?? (city || null);
+
+  const embedded = parseEmbeddedCoordinates(location);
+  if (embedded) {
+    return {
+      city: cityFromText,
+      district: region || districtFromText,
+      latitude: embedded.latitude,
+      longitude: embedded.longitude,
+    };
+  }
+
+  const queries = uniqueQueries([
+    location,
+    [location, city, region, 'Kerala', 'India'].filter(Boolean).join(', '),
+    [name, location, city, region, 'India'].filter(Boolean).join(', '),
+    [name, city, region, 'Kerala', 'India'].filter(Boolean).join(', '),
+    [name, city, 'Kerala', 'India'].filter(Boolean).join(', '),
+  ]);
+
+  for (const query of queries) {
+    const result = await geocodeAddress(query);
+    if (result.latitude != null && result.longitude != null) {
+      return {
+        city: result.city ?? cityFromText,
+        district: result.district ?? (region || districtFromText),
+        latitude: result.latitude,
+        longitude: result.longitude,
+      };
+    }
+  }
+
+  return {
+    city: cityFromText,
+    district: region || districtFromText,
+    latitude: null,
+    longitude: null,
+  };
+}
