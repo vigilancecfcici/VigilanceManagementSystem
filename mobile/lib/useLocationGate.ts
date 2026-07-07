@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as Location from 'expo-location';
+import { normalizeGeofenceRadius, normalizeCoordinate } from './branchCoordinates';
 
 export type LocationGateStatus =
   | 'idle'
@@ -16,11 +17,17 @@ export interface OfficerCoords {
   longitude: number;
 }
 
+export interface LocationGateTarget {
+  latitude?: unknown;
+  longitude?: unknown;
+  geofence_radius?: unknown;
+}
+
 export interface LocationGateResult {
   status: LocationGateStatus;
   distanceMetres: number | null;
   officerCoords: OfficerCoords | null;
-  check: () => Promise<void>;
+  check: (target?: LocationGateTarget | null) => Promise<void>;
   reset: () => void;
 }
 
@@ -30,7 +37,7 @@ function haversineMetres(
   lat2: number,
   lon2: number,
 ): number {
-  const R = 6_371_000; // Earth radius in metres
+  const R = 6_371_000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -49,40 +56,49 @@ export function useLocationGate(
   const [distanceMetres, setDistanceMetres] = useState<number | null>(null);
   const [officerCoords, setOfficerCoords] = useState<OfficerCoords | null>(null);
 
-  const check = useCallback(async () => {
-    try {
-      setStatus('requesting_permission');
-      const { status: permStatus } =
-        await Location.requestForegroundPermissionsAsync();
+  const check = useCallback(
+    async (target?: LocationGateTarget | null) => {
+      const lat = normalizeCoordinate(target?.latitude ?? branchLat);
+      const lon = normalizeCoordinate(target?.longitude ?? branchLon);
+      const radius = normalizeGeofenceRadius(
+        target?.geofence_radius ?? radiusMetres,
+        normalizeGeofenceRadius(radiusMetres),
+      );
 
-      if (permStatus !== 'granted') {
-        setStatus('permission_denied');
-        return;
+      try {
+        setStatus('requesting_permission');
+        const { status: permStatus } =
+          await Location.requestForegroundPermissionsAsync();
+
+        if (permStatus !== 'granted') {
+          setStatus('permission_denied');
+          return;
+        }
+
+        setStatus('fetching');
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
+        const { latitude, longitude } = position.coords;
+        const coords: OfficerCoords = { latitude, longitude };
+        setOfficerCoords(coords);
+
+        if (lat == null || lon == null) {
+          setStatus('no_branch_coords');
+          setDistanceMetres(null);
+          return;
+        }
+
+        const dist = haversineMetres(latitude, longitude, lat, lon);
+        setDistanceMetres(Math.round(dist));
+        setStatus(dist <= radius ? 'within_range' : 'out_of_range');
+      } catch {
+        setStatus('error');
       }
-
-      setStatus('fetching');
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      const { latitude, longitude } = position.coords;
-      const coords: OfficerCoords = { latitude, longitude };
-      setOfficerCoords(coords);
-
-      if (branchLat == null || branchLon == null) {
-        setStatus('no_branch_coords');
-        setDistanceMetres(null);
-        return;
-      }
-
-      const dist = haversineMetres(latitude, longitude, branchLat, branchLon);
-      setDistanceMetres(Math.round(dist));
-
-      setStatus(dist <= radiusMetres ? 'within_range' : 'out_of_range');
-    } catch {
-      setStatus('error');
-    }
-  }, [branchLat, branchLon, radiusMetres]);
+    },
+    [branchLat, branchLon, radiusMetres],
+  );
 
   const reset = useCallback(() => {
     setStatus('idle');

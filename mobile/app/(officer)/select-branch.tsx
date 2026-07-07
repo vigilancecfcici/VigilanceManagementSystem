@@ -20,6 +20,10 @@ import { supabase } from '../../lib/supabase';
 import { BranchCard, type BranchCardStatusTone } from '../../components/BranchCard';
 import { useLocationGate } from '../../lib/useLocationGate';
 import { LocationGateModal } from '../../components/LocationGateModal';
+import {
+  normalizeCoordinate,
+  normalizeGeofenceRadius,
+} from '../../lib/branchCoordinates';
 import { useAuth } from '../../context/AuthContext';
 import { useBranchLocksRealtime } from '../../hooks/useBranchLocksRealtime';
 import {
@@ -100,12 +104,13 @@ const withStoreFallback = (item: Branch): Branch => {
   const storeData = findStoreData(item);
   return {
     ...item,
-    latitude: item.latitude ?? storeData?.latitude ?? null,
-    longitude: item.longitude ?? storeData?.longitude ?? null,
+    latitude: normalizeCoordinate(item.latitude ?? storeData?.latitude),
+    longitude: normalizeCoordinate(item.longitude ?? storeData?.longitude),
     location: item.location || storeData?.address || '',
     store_code: item.store_code ?? storeData?.code ?? null,
     incharge_name: item.incharge_name ?? storeData?.incharge ?? null,
     incharge_phone: item.incharge_phone ?? storeData?.phone ?? null,
+    geofence_radius: normalizeGeofenceRadius(item.geofence_radius),
   };
 };
 
@@ -223,7 +228,9 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
     }
     let safe = ((data as unknown as Branch[]) || []).map((b) => ({
       ...b,
-      geofence_radius: b.geofence_radius ?? 200,
+      latitude: normalizeCoordinate(b.latitude),
+      longitude: normalizeCoordinate(b.longitude),
+      geofence_radius: normalizeGeofenceRadius(b.geofence_radius),
     }));
 
     if (assignedDistricts.length > 0) {
@@ -236,7 +243,13 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
       safe = safe.filter((b) => !b.assigned_officer_id || b.assigned_officer_id === authUserId);
     }
 
-    setBranches(safe);
+    setBranches(safe.map(withStoreFallback));
+  };
+
+  const beginLocationGate = (item: Branch) => {
+    const branch = withStoreFallback(item);
+    setPendingBranch(branch);
+    void locationGate.check(branch);
   };
 
   // ── Batch 16: Near Me fetch ──────────────────────────────────────────────
@@ -267,28 +280,22 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
       }
 
       // Map RPC result to Branch objects
-      const mapped: Branch[] = (data as any[]).map((row) => {
-        const existing = branches.find(
-          (branch) =>
-            branch.id === row.id ||
-            normalizeStoreName(branch.branch_name) === normalizeStoreName(row.branch_name),
-        );
-        const storeData = existing ? findStoreData(existing) : undefined;
-        return {
-          latitude: existing?.latitude ?? storeData?.latitude ?? null,
-          longitude: existing?.longitude ?? storeData?.longitude ?? null,
-          geofence_radius: existing?.geofence_radius ?? 200,
-          store_code: existing?.store_code ?? row.store_code ?? storeData?.code ?? null,
-          incharge_name: existing?.incharge_name ?? row.incharge_name ?? storeData?.incharge ?? null,
-          incharge_phone: existing?.incharge_phone ?? row.incharge_phone ?? storeData?.phone ?? null,
+      const mapped: Branch[] = (data as any[]).map((row) =>
+        withStoreFallback({
           id: row.id,
           branch_name: row.branch_name,
           location: row.location ?? '',
           city: row.city ?? '',
-          region: row.region ?? existing?.region ?? null,
+          region: branches.find((b) => b.id === row.id)?.region ?? null,
+          latitude: normalizeCoordinate(row.latitude),
+          longitude: normalizeCoordinate(row.longitude),
+          geofence_radius: normalizeGeofenceRadius(row.geofence_radius),
+          store_code: row.store_code ?? null,
+          incharge_name: row.incharge_name ?? null,
+          incharge_phone: row.incharge_phone ?? null,
           distance_metres: row.distance_metres,
-        };
-      });
+        }),
+      );
 
       const districtFiltered =
         assignedDistricts.length > 0
@@ -383,9 +390,8 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
                 }
                 setPendingEditCount(null);
                 setPendingInspectionId(result.inspectionId);
-                setPendingBranch(withStoreFallback(item));
                 setPendingReopen(true);
-                locationGate.check();
+                beginLocationGate(item);
               } finally {
                 setRefilling(false);
               }
@@ -408,8 +414,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
               setPendingEditCount(null);
               setPendingReopen(false);
               setPendingInspectionId(null);
-              setPendingBranch(withStoreFallback(item));
-              locationGate.check();
+              beginLocationGate(item);
             },
           },
         ],
@@ -437,8 +442,7 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
             setPendingEditCount(null);
             setPendingReopen(false);
             setPendingInspectionId(null);
-            setPendingBranch(withStoreFallback(item));
-            locationGate.check();
+            beginLocationGate(item);
           },
         },
       ],
@@ -499,7 +503,9 @@ export default function SelectBranchScreen({ embedded = false }: { embedded?: bo
     locationGate.reset();
   };
 
-  const handleRetry = () => { locationGate.check(); };
+  const handleRetry = () => {
+    if (pendingBranch) void locationGate.check(pendingBranch);
+  };
   const handleCancel = () => {
     setPendingBranch(null);
     setPendingEditCount(null);
