@@ -121,9 +121,9 @@ export function buildStoreInspectionReportHtml(
 
   const sectionHtml = Array.from(grouped.entries())
     .map(([sec, items]) => `
-    <div class="section-block">
-      <div class="section-head section-head-board">${escapeHtml(sec)}</div>
-      <table class="report-table">
+    <div class="section-block report-section">
+      <div class="section-head section-head-board section-header">${escapeHtml(sec)}</div>
+      <table class="report-table checklist-table">
         <thead>
           <tr>
             <th style="width:6%">#</th>
@@ -185,15 +185,15 @@ export function buildStoreInspectionReportHtml(
     : '';
 
   const remarksHtml = data.generalRemark
-    ? `<div class="section-block">
-        <div class="section-head section-head-board">General Remarks</div>
+    ? `<div class="section-block report-section">
+        <div class="section-head section-head-board section-header">General Remarks</div>
         <div style="padding:12px 14px;">${escapeHtml(data.generalRemark).split('\n').map((line) => `<p style="margin:0 0 8px;">${line}</p>`).join('')}</div>
       </div>`
     : '';
 
   const headCommentHtml = data.headComment
-    ? `<div class="section-block">
-        <div class="section-head section-head-board">Supervisor Review</div>
+    ? `<div class="section-block report-section">
+        <div class="section-head section-head-board section-header">Supervisor Review</div>
         <div style="padding:12px 14px;">${escapeHtml(data.headComment)}</div>
       </div>`
     : '';
@@ -204,7 +204,7 @@ export function buildStoreInspectionReportHtml(
       : '';
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${REPORT_HTML_CSS}</style></head><body>
-  <div class="report-shell">
+  <div class="report-shell report-page">
     <div class="report-hero">
       <h1>${escapeHtml(title)}</h1>
       <p>Official Field Inspection Document · Vigilance Management System</p>
@@ -231,7 +231,7 @@ export function buildStoreInspectionReportHtml(
       </div>
 
       <div class="report-part">
-        <p class="report-part-title">03 · Field Inspection Findings</p>
+        <p class="report-part-title section-03-header">03 · Field Inspection Findings</p>
         ${headCommentHtml}
         ${sectionHtml}
         ${remarksHtml}

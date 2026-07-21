@@ -84,6 +84,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#ffffff',
   },
+  sectionHeaderGroup: {
+    borderBottomWidth: 0,
+  },
+  summaryGroup: {
+    marginTop: 4,
+  },
   sectionHead: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -246,6 +252,15 @@ function responsePillStyle(status: 'pass' | 'fail' | 'na') {
   return { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' };
 }
 
+/** Rough block height (pt) so react-pdf moves the whole section to the next page when needed. */
+function estimateSectionBlockHeight(itemCount: number): number {
+  const headerHeight = 34;
+  const tableHeaderHeight = 26;
+  const rowHeight = 28;
+  const blockChrome = 18;
+  return headerHeight + tableHeaderHeight + itemCount * rowHeight + blockChrome;
+}
+
 function ReportMetaGrid({ data }: { data: InspectionPdfData }) {
   const score = scoreTheme(data.complianceScore);
   const risk = riskTheme(data.riskLevel);
@@ -288,32 +303,61 @@ function SectionTable({
   items: InspectionPdfResponse[];
 }) {
   const theme = sectionTheme(section);
+  const blockHeight = estimateSectionBlockHeight(items.length);
+
   return (
-    <View style={styles.sectionBlock} wrap>
-      <View
-        wrap={false}
-        style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}
-      >
-        <Text style={{ color: theme.text }}>{section}</Text>
+    <View
+      style={styles.sectionBlock}
+      wrap={false}
+      minPresenceAhead={Math.min(blockHeight, 680)}
+    >
+      <View wrap={false} style={styles.sectionHeaderGroup}>
+        <View
+          style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}
+        >
+          <Text style={{ color: theme.text }}>{section}</Text>
+        </View>
+        <View style={styles.tableHeader}>
+          <Text style={[styles.tableHeaderCell, styles.colNum]}>#</Text>
+          <Text style={[styles.tableHeaderCell, styles.colItem]}>Checklist item</Text>
+          <Text style={[styles.tableHeaderCell, styles.colResp]}>Response</Text>
+          <Text style={[styles.tableHeaderCell, styles.colRemark]}>Remarks</Text>
+        </View>
+        {items.length > 0 ? (() => {
+          const r = items[0];
+          const status = statusForItem(r);
+          const pill = responsePillStyle(status);
+          return (
+            <View
+              style={[
+                styles.tableRow,
+                status === 'fail' ? styles.tableRowFail : status === 'pass' ? styles.tableRowPass : {},
+              ]}
+            >
+              <Text style={[styles.itemText, styles.colNum, { color: theme.accent, fontWeight: 700 }]}>1</Text>
+              <Text style={[styles.itemText, styles.colItem]}>{r.item_text}</Text>
+              <View style={styles.colResp}>
+                <Text style={[styles.respPill, { backgroundColor: pill.backgroundColor, color: pill.color, borderColor: pill.borderColor }]}>
+                  {r.response}
+                </Text>
+              </View>
+              <Text style={[styles.remark, styles.colRemark]}>{r.remarks ?? ''}</Text>
+            </View>
+          );
+        })() : null}
       </View>
-      <View style={styles.tableHeader} wrap={false}>
-        <Text style={[styles.tableHeaderCell, styles.colNum]}>#</Text>
-        <Text style={[styles.tableHeaderCell, styles.colItem]}>Checklist item</Text>
-        <Text style={[styles.tableHeaderCell, styles.colResp]}>Response</Text>
-        <Text style={[styles.tableHeaderCell, styles.colRemark]}>Remarks</Text>
-      </View>
-      {items.map((r, idx) => {
+      {items.slice(1).map((r, idx) => {
         const status = statusForItem(r);
         const pill = responsePillStyle(status);
         return (
           <View
-            key={`${section}-${idx}`}
+            key={`${section}-${idx + 1}`}
             style={[
               styles.tableRow,
               status === 'fail' ? styles.tableRowFail : status === 'pass' ? styles.tableRowPass : {},
             ]}
           >
-            <Text style={[styles.itemText, styles.colNum, { color: theme.accent, fontWeight: 700 }]}>{idx + 1}</Text>
+            <Text style={[styles.itemText, styles.colNum, { color: theme.accent, fontWeight: 700 }]}>{idx + 2}</Text>
             <Text style={[styles.itemText, styles.colItem]}>{r.item_text}</Text>
             <View style={styles.colResp}>
               <Text style={[styles.respPill, { backgroundColor: pill.backgroundColor, color: pill.color, borderColor: pill.borderColor }]}>
@@ -334,7 +378,7 @@ function PdfSectionChart({ responses }: { responses: InspectionPdfResponse[] }) 
   const theme = sectionTheme('Section compliance overview');
 
   return (
-    <View style={[styles.sectionBlock, { marginBottom: 10 }]}>
+    <View style={[styles.sectionBlock, { marginBottom: 10 }]} wrap={false} minPresenceAhead={120}>
       <View style={[styles.sectionHead, { backgroundColor: theme.bg, borderBottomColor: theme.border }]}>
         <Text style={{ color: theme.text }}>Section compliance overview</Text>
       </View>
@@ -421,14 +465,14 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
               <PdfSectionChart responses={data.responses} />
 
               {data.headComment ? (
-                <View style={styles.noteBox}>
+                <View style={styles.noteBox} wrap={false} minPresenceAhead={80}>
                   <Text style={styles.h2}>Supervisor review</Text>
                   <Text style={styles.body}>{data.headComment}</Text>
                 </View>
               ) : null}
 
               {data.generalRemark ? (
-                <View style={[styles.noteBox, { borderColor: '#fcd34d', backgroundColor: '#fffbeb' }]}>
+                <View style={[styles.noteBox, { borderColor: '#fcd34d', backgroundColor: '#fffbeb' }]} wrap={false} minPresenceAhead={80}>
                   <Text style={styles.h2}>General observations</Text>
                   <Text style={styles.body}>{data.generalRemark}</Text>
                 </View>
@@ -438,10 +482,12 @@ export function InspectionReportDoc({ data }: { data: InspectionPdfData }) {
                 <SectionTable key={section} section={section} items={items} />
               ))}
 
-              <View style={styles.summaryStrip}>
-                <Text style={styles.summaryText}>Overall Compliance: {data.complianceScore.toFixed(1)}%</Text>
-                <Text style={styles.summaryText}>Risk Level: {data.riskLevel.toUpperCase()}</Text>
-                <Text style={styles.summaryText}>Inspector: {data.officerName}</Text>
+              <View style={styles.summaryGroup} wrap={false} minPresenceAhead={52}>
+                <View style={styles.summaryStrip}>
+                  <Text style={styles.summaryText}>Overall Compliance: {data.complianceScore.toFixed(1)}%</Text>
+                  <Text style={styles.summaryText}>Risk Level: {data.riskLevel.toUpperCase()}</Text>
+                  <Text style={styles.summaryText}>Inspector: {data.officerName}</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -512,14 +558,14 @@ function BrowserInspectionReportDoc({
               <PdfSectionChart responses={data.responses} />
 
               {data.headComment ? (
-                <View style={styles.noteBox}>
+                <View style={styles.noteBox} wrap={false} minPresenceAhead={80}>
                   <Text style={styles.h2}>Supervisor review</Text>
                   <Text style={styles.body}>{data.headComment}</Text>
                 </View>
               ) : null}
 
               {data.generalRemark ? (
-                <View style={[styles.noteBox, { borderColor: '#fcd34d', backgroundColor: '#fffbeb' }]}>
+                <View style={[styles.noteBox, { borderColor: '#fcd34d', backgroundColor: '#fffbeb' }]} wrap={false} minPresenceAhead={80}>
                   <Text style={styles.h2}>General observations</Text>
                   <Text style={styles.body}>{data.generalRemark}</Text>
                 </View>
@@ -529,10 +575,12 @@ function BrowserInspectionReportDoc({
                 <SectionTable key={section} section={section} items={items} />
               ))}
 
-              <View style={styles.summaryStrip}>
-                <Text style={styles.summaryText}>Overall Compliance: {data.complianceScore.toFixed(1)}%</Text>
-                <Text style={styles.summaryText}>Risk Level: {data.riskLevel.toUpperCase()}</Text>
-                <Text style={styles.summaryText}>Inspector: {data.officerName}</Text>
+              <View style={styles.summaryGroup} wrap={false} minPresenceAhead={52}>
+                <View style={styles.summaryStrip}>
+                  <Text style={styles.summaryText}>Overall Compliance: {data.complianceScore.toFixed(1)}%</Text>
+                  <Text style={styles.summaryText}>Risk Level: {data.riskLevel.toUpperCase()}</Text>
+                  <Text style={styles.summaryText}>Inspector: {data.officerName}</Text>
+                </View>
               </View>
             </View>
           </View>

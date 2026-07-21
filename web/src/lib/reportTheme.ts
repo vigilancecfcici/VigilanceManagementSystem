@@ -79,7 +79,7 @@ export const REPORT_HTML_CSS = `
     line-height: 1.45;
   }
   .report-shell {
-    max-width: 920px;
+    max-width: 794px;
     margin: 0 auto;
     background: #ffffff;
     border: 2px solid #1e3a8a;
@@ -147,6 +147,12 @@ export const REPORT_HTML_CSS = `
     border-radius: 12px;
     overflow: hidden;
     background: #ffffff;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .section-head {
     padding: 10px 14px;
@@ -155,10 +161,22 @@ export const REPORT_HTML_CSS = `
     letter-spacing: 0.7px;
     text-transform: uppercase;
     border-bottom: 1.5px solid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .section-header {
+    break-after: avoid;
+    page-break-after: avoid;
   }
   table.report-table {
     width: 100%;
     border-collapse: collapse;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .checklist-table {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .report-table th {
     text-align: left;
@@ -176,8 +194,8 @@ export const REPORT_HTML_CSS = `
     vertical-align: top;
   }
   .report-table tr {
-    break-inside: auto;
-    page-break-inside: auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .report-table thead {
     display: table-header-group;
@@ -232,6 +250,8 @@ export const REPORT_HTML_CSS = `
     text-align: center;
     font-size: 10px;
     color: #64748b;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .summary-strip {
     display: flex;
@@ -245,6 +265,52 @@ export const REPORT_HTML_CSS = `
     margin-top: 4px;
     font-weight: 700;
     color: #1e3a8a;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-page {
+    margin: 0;
+    padding: 0;
+  }
+  @media print {
+    body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+    }
+    .report-shell {
+      box-shadow: none;
+      border-radius: 0;
+      max-width: none;
+    }
+    .report-section,
+    .section-block {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .section-head,
+    .section-header {
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    .checklist-table,
+    table.report-table {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .report-page {
+      margin: 0;
+      padding: 0;
+    }
+    .section-03-header {
+      break-before: page;
+      page-break-before: always;
+    }
+    .summary-strip,
+    .report-footer {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
   }
   .report-part {
     margin-bottom: 20px;
@@ -259,6 +325,12 @@ export const REPORT_HTML_CSS = `
     letter-spacing: 0.8px;
     text-transform: uppercase;
     color: #1e3a8a;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .section-03-header {
+    break-before: page;
+    page-break-before: always;
   }
   .section-head-board {
     background: #1e3a8a !important;
